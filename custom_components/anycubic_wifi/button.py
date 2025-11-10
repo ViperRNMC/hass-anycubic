@@ -43,3 +43,14 @@ class AnycubicHomeButton(CoordinatorEntity, ButtonEntity):
         }
         topic = self.coordinator.mqtt.web_topic("axis")
         self.coordinator.mqtt.publish_json(topic, payload)
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
+        }

@@ -42,6 +42,17 @@ class AnycubicPrinterInfoSensor(CoordinatorEntity, SensorEntity):
             "aux_fan_speed_pct": info.get("aux_fan_speed_pct"),
             "box_fan_level": info.get("box_fan_level"),
         }
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
+        }
 
 
 class AnycubicNozzleTempSensor(CoordinatorEntity, SensorEntity):
@@ -62,6 +73,17 @@ class AnycubicNozzleTempSensor(CoordinatorEntity, SensorEntity):
         return {
             "target_nozzle_temp": temp.get("target_nozzle_temp")
         }
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
+        }
 
 
 class AnycubicHotbedTempSensor(CoordinatorEntity, SensorEntity):
@@ -81,6 +103,17 @@ class AnycubicHotbedTempSensor(CoordinatorEntity, SensorEntity):
         temp = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
         return {
             "target_hotbed_temp": temp.get("target_hotbed_temp")
+        }
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
         }
 
 
@@ -105,6 +138,17 @@ class AnycubicPrintJobSensor(CoordinatorEntity, SensorEntity):
             "print_time": print_data.get("print_time"),
             "filename": print_data.get("filename"),
             "supplies_usage": print_data.get("supplies_usage"),
+        }
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
         }
 
 
@@ -135,3 +179,14 @@ class AnycubicSlotsSensor(CoordinatorEntity, SensorEntity):
                     "sku": slot.get("sku"),
                 })
         return all_slots
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
+        }

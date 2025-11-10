@@ -40,3 +40,14 @@ class AnycubicThumbnailImage(ImageEntity, CoordinatorEntity):
             except Exception:
                 _LOGGER.warning("Could not decode thumbnail base64")
         return None
+    
+    @property
+    def device_info(self):
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        return {
+            "identifiers": {(DOMAIN, "anycubic_wifi")},
+            "name": info.get("model", "Anycubic Printer"),
+            "manufacturer": "Anycubic",
+            "model": info.get("model", "Unknown"),
+            "sw_version": info.get("version", "Unknown"),
+        }
