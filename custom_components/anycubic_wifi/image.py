@@ -1,5 +1,9 @@
+
 import base64
 import logging
+import io
+import tempfile
+import ffmpeg
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.core import HomeAssistant
@@ -34,12 +38,30 @@ class AnycubicThumbnailImage(ImageEntity, CoordinatorEntity):
             .get("file_details", {})
             .get("thumbnail")
         )
-        if thumb_b64:
-            try:
-                return base64.b64decode(thumb_b64)
-            except Exception:
-                _LOGGER.warning("Could not decode thumbnail base64")
-        return None
+        if not thumb_b64:
+            return None
+        try:
+            flv_bytes = base64.b64decode(thumb_b64)
+        except Exception:
+            _LOGGER.warning("Could not decode thumbnail base64")
+            return None
+
+        # Convert FLV to PNG using ffmpeg
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".flv") as flv_file, tempfile.NamedTemporaryFile(suffix=".png") as png_file:
+                flv_file.write(flv_bytes)
+                flv_file.flush()
+                (
+                    ffmpeg
+                    .input(flv_file.name)
+                    .output(png_file.name, vframes=1, format='png')
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+                png_file.seek(0)
+                return png_file.read()
+        except Exception as e:
+            _LOGGER.error(f"Failed to convert FLV to PNG: {e}")
+            return None
     
     @property
     def device_info(self):
