@@ -6,10 +6,10 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/berskde/hass-anycubic",
+  "documentation": "https://github.com/viperrnmc/hass-anycubic",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/berskde/hass-anycubic/issues",
+  "issue_tracker": "https://github.com/viperrnmc/hass-anycubic/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.1.7"
+  "version": "2025.11.1.b2"
 }

@@ -35,8 +35,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, {})
-    if coordinator and coordinator.mqtt:
-        await coordinator.mqtt.disconnect()
+    if coordinator and getattr(coordinator, "mqtt", None):
+        disconnect = getattr(coordinator.mqtt, "disconnect", None)
+        if disconnect:
+            if callable(disconnect):
+                # Check if disconnect is a coroutine function
+                import inspect
+                if inspect.iscoroutinefunction(disconnect):
+                    await disconnect()
+                else:
+                    disconnect()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
     return unload_ok
