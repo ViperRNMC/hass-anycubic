@@ -82,7 +82,3 @@ class AnycubicAPI:
 
 	def get_model_name(self):
 		return self.printer_data.get("modelName") or "Anycubic"
-# Helper: API functionaliteit voor Anycubic integratie
-# Verplaats hier relevante functies/classes uit api.py indien gewenst.
-
-# ...existing code...

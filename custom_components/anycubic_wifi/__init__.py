@@ -13,7 +13,7 @@ from .coordinator import AnycubicDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-_PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.IMAGE, Platform.LIGHT, Platform.SENSOR]
+_PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.IMAGE, Platform.LIGHT, Platform.SENSOR, Platform.FAN, Platform.CAMERA, Platform.NUMBER]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

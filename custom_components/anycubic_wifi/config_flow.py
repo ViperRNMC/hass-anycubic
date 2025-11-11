@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN
-from .api import AnycubicAPI
+from .helper.api import AnycubicAPI
 
 _LOGGER = logging.getLogger(__name__)
 
