@@ -5,9 +5,9 @@ from datetime import timedelta
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import AnycubicAPI
+from .helper.api import AnycubicAPI
 from .const import DOMAIN
-from .mqtt import AnycubicMQTT
+from .helper.mqtt import AnycubicMQTT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +28,9 @@ class AnycubicDataUpdateCoordinator(DataUpdateCoordinator):
 
     def async_set_updated_data(self, data):
         """Callback to set updated data from MQTT."""
+        # Merge only the updated type (e.g. 'fan') into self.data
+        if not hasattr(self, 'data') or self.data is None:
+            self.data = {}
         # Check slots
         multi_color_box = data.get("multiColorBox", {}).get("data", {}).get("multi_color_box", [])
         slots_now = set()
@@ -42,7 +45,10 @@ class AnycubicDataUpdateCoordinator(DataUpdateCoordinator):
             self._current_slots.update(new_slots)
             async_dispatcher_send(self.hass, f"{DOMAIN}_new_slots", new_slots)
 
-        super().async_set_updated_data(data)
+        # Only update the relevant type in self.data
+        for key, value in data.items():
+            self.data[key] = value
+        super().async_set_updated_data(self.data)
 
     async def _async_update_data(self):
         if not self.api:
