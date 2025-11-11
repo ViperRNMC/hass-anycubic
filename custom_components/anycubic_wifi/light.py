@@ -18,7 +18,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class AnycubicLightEntity(CoordinatorEntity, LightEntity):
-    """Anycubic Kobra S1 enclosure light as Home Assistant light entity."""
+    """Anycubic Kobra S1 chamber light as Home Assistant light entity."""
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_color_mode = ColorMode.BRIGHTNESS
 
@@ -26,11 +26,11 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
         super().__init__(coordinator)
         self._type_id = 2
         self._attr_unique_id = "anycubic_light_printer"
-        self._attr_name = "Enclosure Light"
+        self._attr_name = "Chamber Light"
 
     @property
     def is_on(self) -> bool:
-        """Return True if the enclosure light is on."""
+        """Return True if the chamber light is on."""
         light = self.coordinator.data.get("light")
         if light and isinstance(light.get("data"), dict):
             lights = light["data"].get("lights")
@@ -44,7 +44,7 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
 
     @property
     def brightness(self) -> int:
-        """Return the brightness of the enclosure light."""
+        """Return the brightness of the chamber light."""
         light = self.coordinator.data.get("light")
         if light and isinstance(light.get("data"), dict):
             lights = light["data"].get("lights")
@@ -59,16 +59,16 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
         return 0
 
     async def async_turn_on(self, **kwargs: Any):
-        """Turn the enclosure light on."""
+        """Turn the chamber light on."""
         pct = int(kwargs.get(ATTR_BRIGHTNESS, 255) / 2.55)
         await self._publish_light(status=1, brightness=pct)
 
     async def async_turn_off(self, **kwargs: Any):
-        """Turn the enclosure light off."""
+        """Turn the chamber light off."""
         await self._publish_light(status=0, brightness=0)
 
     async def _publish_light(self, status: int, brightness: int):
-        """Publish MQTT message to control enclosure light."""
+        """Publish MQTT message to control chamber light."""
         payload = {
             "type": "light",
             "action": "control",
