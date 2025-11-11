@@ -12,7 +12,10 @@ from .helper.mqtt import AnycubicMQTT
 _LOGGER = logging.getLogger(__name__)
 
 
-    """Coordinator for Anycubic integration data updates and MQTT handling."""
+class AnycubicDataUpdateCoordinator(DataUpdateCoordinator):
+    """
+    Coordinator for Anycubic integration data updates and MQTT handling.
+    """
     def __init__(self, hass, host):
         super().__init__(
             hass,
