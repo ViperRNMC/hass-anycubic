@@ -76,7 +76,7 @@ class AnycubicPrinterInfoSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Printer Info"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_printer_info_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_info_{serial}"
         self._attr_icon = "mdi:information-outline"
 
     @property
@@ -100,7 +100,7 @@ class AnycubicModelSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Model"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_printer_model_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_model_{serial}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:printer-3d"
 
@@ -125,7 +125,7 @@ class AnycubicIpSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "IP"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_printer_ip_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_ip_{serial}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:ip-network"
 
@@ -150,7 +150,7 @@ class AnycubicFirmwareSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Firmware"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_printer_firmware_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_firmware_{serial}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:chip"
 
@@ -175,7 +175,7 @@ class AnycubicNozzleTempSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Nozzle Temperature"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_nozzle_temperature_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_nozzle_temperature_{serial}"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_icon = "mdi:thermometer"
 
@@ -204,7 +204,7 @@ class AnycubicHotbedTempSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Hotbed Temperature"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_hotbed_temperature_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_hotbed_temperature_{serial}"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_icon = "mdi:thermometer"
 
@@ -233,7 +233,7 @@ class AnycubicTargetNozzleTempSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Target Nozzle Temperature"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_target_nozzle_temperature_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_target_nozzle_temperature_{serial}"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_icon = "mdi:thermometer"
 
@@ -262,7 +262,7 @@ class AnycubicTargetHotbedTempSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Target Hotbed Temperature"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_target_hotbed_temperature_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_target_hotbed_temperature_{serial}"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_icon = "mdi:thermometer"
 
@@ -291,7 +291,7 @@ class AnycubicPrintJobSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Print Status"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_print_status_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_status_{serial}"
         self._attr_icon = "mdi:printer-3d"
 
     @property
@@ -333,7 +333,7 @@ class AnycubicPrintProgressSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Print Progress"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_print_progress_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_progress_{serial}"
         self._attr_native_unit_of_measurement = "%"
         self._attr_icon = "mdi:progress-clock"
 
@@ -363,7 +363,7 @@ class AnycubicPrintTimeSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_name = "Print Time"
         serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"anycubic_print_time_{serial}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_time_{serial}"
         self._attr_icon = "mdi:clock-outline"
 
     @property
@@ -401,7 +401,7 @@ class AceProBoxTempSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Temperature"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_temp_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_temp_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:thermometer"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
@@ -425,7 +425,7 @@ class AceProBoxDryingSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Drying Status"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_drying_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_drying_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:weather-windy"
 
 
@@ -476,7 +476,7 @@ class AceProBoxAutoFeedSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Auto Feed"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_autofeed_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_autofeed_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:autorenew"
 
     @property
@@ -500,7 +500,7 @@ class AceProBoxFeedStatusSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Feed Status"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_feedstatus_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_feedstatus_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:progress-check"
 
     @property
@@ -532,7 +532,7 @@ class AceProBoxLoadedSlotSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Loaded Slot"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_loadedslot_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_loadedslot_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:tray"
 
     @property
@@ -555,7 +555,7 @@ class AceProBoxModelIdSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Model ID"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_modelid_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_modelid_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:identifier"
 
     @property
@@ -578,7 +578,7 @@ class AceProBoxStatusSensor(CoordinatorEntity, SensorEntity):
         self._box = box
         self._attr_name = "Ace Pro Box Status"
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"ace_pro_box_status_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_status_{serial}_{box.get('id', 0)}"
         self._attr_icon = "mdi:checkbox-marked-circle"
 
     @property
@@ -604,7 +604,7 @@ class AceProBoxSlotSensor(CoordinatorEntity, SensorEntity):
         self._index = index
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
         self._attr_name = f"Slot {index}"
-        self._attr_unique_id = f"ace_pro_box_slot_{index}_{serial}_{box.get('id', 0)}"
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_slot_{index}_{serial}_{box.get('id', 0)}"
         # Icon will be set dynamically in property
         self._icon_loaded = "mdi:tray-full"
         self._icon_empty = "mdi:tray"

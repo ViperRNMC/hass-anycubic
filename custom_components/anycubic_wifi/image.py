@@ -21,7 +21,7 @@ class AnycubicGcodePreviewImage(ImageEntity, CoordinatorEntity):
         super().__init__(hass)
         super(CoordinatorEntity, self).__init__(coordinator)
         self._attr_name = "G-code Preview"
-        self._attr_unique_id = "anycubic_gcode_preview_image"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_gcode_preview_image"
 
     async def async_image(self):
         gcode_path = self._get_gcode_path()
@@ -83,7 +83,7 @@ class AnycubicCameraEntity(Camera, CoordinatorEntity):
         super().__init__()
         super(CoordinatorEntity, self).__init__(coordinator)
         self._attr_name = "Camera"
-        self._attr_unique_id = "printer_camera"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_printer_camera"
 
     @property
     def stream_source(self):
@@ -107,9 +107,8 @@ class AnycubicThumbnailImage(ImageEntity, CoordinatorEntity):
     def __init__(self, hass: HomeAssistant, coordinator: AnycubicDataUpdateCoordinator):
         super().__init__(hass)
         super(CoordinatorEntity, self).__init__(coordinator)
-
         self._attr_name = "Print Thumbnail"
-        self._attr_unique_id = "anycubic_thumbnail_image"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_thumbnail_image"
 
     async def async_image(self):
         thumb_b64 = (

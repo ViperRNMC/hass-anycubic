@@ -26,7 +26,7 @@ class AnycubicHomeButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self._axis = axis
         self._attr_name = f"{name}"
-        self._attr_unique_id = f"anycubic_home_{axis}"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_home_{axis}"
 
     async def async_press(self) -> None:
         """Send homing command via MQTT."""

@@ -10,7 +10,7 @@ class AnycubicTargetNozzleTempNumber(CoordinatorEntity, NumberEntity):
         super().__init__(coordinator)
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
         self._attr_name = "Target Nozzle Temperature"
-        self._attr_unique_id = f"anycubic_target_nozzle_temp_{serial}"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_target_nozzle_temp_{serial}"
         self._attr_icon = "mdi:thermometer"
         self._attr_native_min_value = 185
         self._attr_native_max_value = 320
@@ -61,7 +61,7 @@ class AnycubicTargetHotbedTempNumber(CoordinatorEntity, NumberEntity):
         super().__init__(coordinator)
         serial = coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
         self._attr_name = "Target Hotbed Temperature"
-        self._attr_unique_id = f"anycubic_target_hotbed_temp_{serial}"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_target_hotbed_temp_{serial}"
         self._attr_icon = "mdi:thermometer"
         self._attr_native_min_value = 35
         self._attr_native_max_value = 120

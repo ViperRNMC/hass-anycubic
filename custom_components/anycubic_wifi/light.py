@@ -25,7 +25,7 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
     def __init__(self, coordinator, channel: str):
         super().__init__(coordinator)
         self._type_id = 2
-        self._attr_unique_id = "anycubic_light_printer"
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_light_printer"
         self._attr_name = "Chamber Light"
 
     @property

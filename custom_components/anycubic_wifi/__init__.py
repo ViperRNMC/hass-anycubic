@@ -24,6 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create the coordinator (handles polling and updating credentials)
     coordinator = AnycubicDataUpdateCoordinator(hass, host)
+    coordinator.config_entry = entry
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
