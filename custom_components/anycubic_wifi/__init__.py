@@ -1,5 +1,4 @@
 """The Anycubic integration."""
-
 from __future__ import annotations
 
 import logging
@@ -13,7 +12,18 @@ from .coordinator import AnycubicDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-_PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.IMAGE, Platform.LIGHT, Platform.SENSOR, Platform.FAN, Platform.CAMERA, Platform.NUMBER]
+PLATFORMS = [
+    "sensor",
+    # "switch",
+    # "select",
+    "button",
+    "fan",
+    "light",
+    # "camera",
+    # "image",
+    "number",
+    # "binary_sensor",
+] 
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -29,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
@@ -47,5 +57,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 else:
                     disconnect()
 
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     return unload_ok
