@@ -14,8 +14,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [
     "sensor",
-    # "switch",
-    # "select",
+    "switch",
+    "select",
     "button",
     "fan",
     "light",
