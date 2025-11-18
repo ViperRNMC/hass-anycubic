@@ -36,9 +36,7 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
         self.definition = definition
         self._key = definition["key"]
         self._attr_name = definition["name"]
-        self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_{self._key}"
-        )
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
         self._attr_icon = definition.get("icon", "mdi:lightbulb")
         self._attr_has_entity_name = True
         self._type_id = definition["type_id"]

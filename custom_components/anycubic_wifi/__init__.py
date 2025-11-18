@@ -22,7 +22,7 @@ PLATFORMS = [
     # "camera",
     # "image",
     "number",
-    # "binary_sensor",
+    "binary_sensor",
 ] 
 
 

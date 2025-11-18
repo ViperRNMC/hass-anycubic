@@ -1,671 +1,397 @@
 """Anycubic sensor platform for Home Assistant."""
 
+from __future__ import annotations
+
 import logging
-from homeassistant.helpers.entity import EntityCategory
+from typing import Any, Optional, Sequence
+import math
+
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import UnitOfTemperature
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import DOMAIN
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+
+from .const import (
+    DOMAIN,
+    MANUFACTURER,
+    MODEL,
+    SENSOR_DEFINITIONS,
+    ACE_PRO_DEVICE_BASE,
+    EXTFILBOX_DEVICE_BASE,
+    MULTI_COLOR_BOX_KEY,
+    EXT_FILBOX_KEY,
+    DEVICE_TYPE_ACE_PRO,
+    DEVICE_TYPE_EXTFILBOX,
+    FILAMENT_DIAMETER_MM,
+    FILAMENT_DENSITY_G_CM3,
+)
+from .helper.color import nearest_color_name
+from .helper.time import minutes_to_hhmm
+from .helper.path import get_from_path 
+
+try:
+    import webcolors  # type: ignore
+    _HAS_WEBCOLORS = True
+except Exception:
+    _HAS_WEBCOLORS = False
+
 
 _LOGGER = logging.getLogger(__name__)
 
-PLA_COLOR_MAP = {
-    (33, 39, 33): "Dark Green",
-    (135, 206, 235): "Sky Blue",
-    (0, 0, 0): "Black",
-    (255, 255, 255): "White",
-    (255, 0, 0): "Red",
-    (0, 255, 0): "Green",
-    (0, 0, 255): "Blue",
-    (255, 255, 0): "Yellow",
-    (255, 165, 0): "Orange",
-    (128, 0, 128): "Purple",
-    (255, 192, 203): "Pink",
-    (165, 42, 42): "Brown",
-    (192, 192, 192): "Silver",
-    (255, 215, 0): "Gold",
-}
+
+def _compute_supplies_from_raw(raw: Optional[int]) -> tuple[Optional[float], Optional[float], Optional[str]]:
+    """Compute grams, factor and method from raw supplies usage value.
+
+    Returns (grams, factor, method). Uses FILAMENT_DIAMETER_MM constant to
+    compute grams-per-mm from geometry + internal density; falls back to
+    the geometry-based estimate.
+    """
+    if raw is None:
+        return None, None, None
+    # Compute using filament cross-section area * length * density
+    d = float(FILAMENT_DIAMETER_MM)
+    radius = d / 2.0
+    area_mm2 = math.pi * (radius ** 2)
+    grams_per_mm = (area_mm2 / 1000.0) * FILAMENT_DENSITY_G_CM3
+    factor = grams_per_mm
+    method = "constant_diameter"
+    grams = raw * factor
+    return grams, factor, method
+
+
+
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Anycubic sensor entities from config entry."""
+    """Set up sensors from SENSOR_DEFINITIONS."""
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    entities = [
-        AnycubicPrinterInfoSensor(coordinator),
-        AnycubicNozzleTempSensor(coordinator),
-        AnycubicHotbedTempSensor(coordinator),
-        AnycubicPrintJobSensor(coordinator),
-        AnycubicModelSensor(coordinator),
-        AnycubicIpSensor(coordinator),
-        AnycubicFirmwareSensor(coordinator),
-        AnycubicPrintProgressSensor(coordinator),
-        AnycubicPrintTimeSensor(coordinator),
-    ]
-    # Add Ace Pro Box sensors if present
-    boxes = coordinator.data.get("multiColorBox", {}).get("data", {}).get("multi_color_box", [])
-    for box in boxes:
-        entities.append(AceProBoxTempSensor(coordinator, box))
-        entities.append(AceProBoxDryingSensor(coordinator, box))
-        entities.append(AceProBoxAutoFeedSensor(coordinator, box))
-        entities.append(AceProBoxFeedStatusSensor(coordinator, box))
-        entities.append(AceProBoxLoadedSlotSensor(coordinator, box))
-        entities.append(AceProBoxModelIdSensor(coordinator, box))
-        entities.append(AceProBoxStatusSensor(coordinator, box))
-        # Add Ace Pro Box Slot sensors (0-3)
-        for i in range(4):
-            entities.append(AceProBoxSlotSensor(coordinator, box, i))
-    async_add_entities(entities)
+    if coordinator is None:
+        _LOGGER.error("Coordinator for %s not found in hass.data", entry.entry_id)
+        return
 
-# Helper function to convert minutes to HH:MM
-def minutes_to_hhmm(minutes):
-    """Convert minutes to HH:MM format, or 'Onbekend' if not valid."""
-    if minutes is None:
-        return "Onbekend"
+    # Force-fetch multiColorBox and extfilbox so per-box sensors have initial values
     try:
-        minutes = int(minutes)
+        boxes = await coordinator.async_get_boxes()
     except Exception:
-        return str(minutes)
-    if minutes < 1:
-        return "Onbekend"
-    hours, mins = divmod(minutes, 60)
-    return f"{hours:02d}:{mins:02d}"
+        boxes = coordinator.get_boxes()
+        _LOGGER.debug("Coordinator async_get_boxes failed; falling back to cached boxes")
+    _LOGGER.debug("sensor setup: found %d boxes at setup", len(boxes) if boxes is not None else 0)
+    try:
+        await coordinator.async_query_topic(EXT_FILBOX_KEY)
+    except Exception:
+        _LOGGER.debug("Coordinator query for extfilbox failed or MQTT not ready")
 
-# Printer sensors
-class AnycubicPrinterInfoSensor(CoordinatorEntity, SensorEntity):
-    """Printer info sensor."""
-    def __init__(self, coordinator):
+    # Expand per-box sensor templates and create entities
+    expanded_defs = coordinator.expand_definitions(SENSOR_DEFINITIONS)
+    entities: list[SensorEntity] = []
+    for d in expanded_defs:
+        try:
+            entities.append(AnycubicSensor(coordinator, d))
+        except Exception:  # defensive: skip bad definitions
+            _LOGGER.exception("Failed to create sensor from definition %s", d)
+
+    # Register the entities created from SENSOR_DEFINITIONS
+    if entities:
+        _LOGGER.debug("sensor setup: creating %d sensor entities (expanded_defs total=%d)", len(entities), len(expanded_defs))
+        _LOGGER.debug("sensor setup: sensor keys: %s", [e.definition.get('key') for e in entities])
+        async_add_entities(entities)
+
+    # If no boxes were available at setup, wait for boxes_updated and create per-box sensors
+    if not boxes:
+        def _on_boxes_updated(boxes_list):
+            _LOGGER.debug("sensor listener: boxes_updated fired with %d boxes", len(boxes_list) if boxes_list else 0)
+            expanded = coordinator.expand_definitions(SENSOR_DEFINITIONS)
+            _LOGGER.debug("sensor listener: expanded_defs count=%d", len(expanded))
+            new_entities: list[SensorEntity] = []
+            for d in expanded:
+                if d.get("box_id") is not None:
+                    try:
+                        new_entities.append(AnycubicSensor(coordinator, d))
+                    except Exception:
+                        _LOGGER.exception("Failed to create per-box sensor from definition %s", d)
+            if not new_entities:
+                _LOGGER.debug("sensor listener: no new per-box sensors to add")
+                return
+
+            def _add_and_unsub():
+                try:
+                    _LOGGER.debug("sensor listener: adding %d per-box sensor entities", len(new_entities))
+                    async_add_entities(new_entities)
+                except Exception:
+                    _LOGGER.exception("Failed to add per-box sensor entities")
+                try:
+                    unsub()
+                except Exception:
+                    pass
+
+            coordinator.hass.loop.call_soon_threadsafe(_add_and_unsub)
+
+        unsub = async_dispatcher_connect(coordinator.hass, f"{DOMAIN}_boxes_updated", _on_boxes_updated)
+
+class AnycubicSensor(CoordinatorEntity, SensorEntity):
+    """Generic sensor backed by coordinator data.
+
+    Definition keys supported:
+    - name, key, data_path (tuple/list of keys), unit, icon, entity_category,
+      formatter (callable name string supported in this module).
+    """
+
+    def __init__(self, coordinator, definition: dict):
         super().__init__(coordinator)
-        self._attr_name = "Printer Info"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_info_{serial}"
-        self._attr_icon = "mdi:information-outline"
+        self.definition = definition
+        self._key = definition["key"]
+        self._attr_name = definition["name"]
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
+        self._data_key = definition.get("data_key")
+        self._attr_has_entity_name = True
+        self._attr_native_unit_of_measurement = definition.get("unit")
+        # Use icon from definition when provided (icons live in `const.py` as mdi strings)
+        icon = definition.get("icon")
+        if icon:
+            self._attr_icon = icon
+        self._formatter = definition.get("formatter")
+        cat = definition.get("entity_category")
+        if cat == "diagnostic":
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        # convenience helpers custom in definitions
+        self._data_field = definition.get("data_field")
+        self._slot_index = definition.get("slot_index")
 
     @property
-    def native_value(self):
-        return self.coordinator.data.get("info", {}).get("data", {}).get("state")
+    def native_value(self) -> Any:
+        data_path = tuple(self.definition.get("data_path", ()))
+        if not data_path:
+            return None
 
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
+        top = data_path[0]
+        rest = data_path[1:]
+        data = self.coordinator.data.get(top, {})
 
-class AnycubicModelSensor(CoordinatorEntity, SensorEntity):
-    """Printer model sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Model"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_model_{serial}"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_icon = "mdi:printer-3d"
-
-    @property
-    def native_value(self):
-        return self.coordinator.data.get("info", {}).get("data", {}).get("model")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicIpSensor(CoordinatorEntity, SensorEntity):
-    """Printer IP sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "IP"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_ip_{serial}"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_icon = "mdi:ip-network"
-
-    @property
-    def native_value(self):
-        return self.coordinator.data.get("info", {}).get("data", {}).get("ip")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicFirmwareSensor(CoordinatorEntity, SensorEntity):
-    """Printer firmware sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Firmware"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_printer_firmware_{serial}"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_icon = "mdi:chip"
-
-    @property
-    def native_value(self):
-        return self.coordinator.data.get("info", {}).get("data", {}).get("version")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicNozzleTempSensor(CoordinatorEntity, SensorEntity):
-    """Nozzle temperature sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Nozzle Temperature"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_nozzle_temperature_{serial}"
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-        self._attr_icon = "mdi:thermometer"
-
-    @property
-    def native_value(self):
-        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
-        if temp_report.get("curr_nozzle_temp") is not None:
-            return temp_report.get("curr_nozzle_temp")
-        temp_info = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
-        return temp_info.get("curr_nozzle_temp")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicHotbedTempSensor(CoordinatorEntity, SensorEntity):
-    """Hotbed temperature sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Hotbed Temperature"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_hotbed_temperature_{serial}"
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-        self._attr_icon = "mdi:thermometer"
-
-    @property
-    def native_value(self):
-        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
-        if temp_report.get("curr_hotbed_temp") is not None:
-            return temp_report.get("curr_hotbed_temp")
-        temp_info = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
-        return temp_info.get("curr_hotbed_temp")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicTargetNozzleTempSensor(CoordinatorEntity, SensorEntity):
-    """Target nozzle temperature sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Target Nozzle Temperature"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_target_nozzle_temperature_{serial}"
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-        self._attr_icon = "mdi:thermometer"
-
-    @property
-    def native_value(self):
-        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
-        if temp_report.get("target_nozzle_temp") is not None:
-            return temp_report.get("target_nozzle_temp")
-        temp_info = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
-        return temp_info.get("target_nozzle_temp")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicTargetHotbedTempSensor(CoordinatorEntity, SensorEntity):
-    """Target hotbed temperature sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Target Hotbed Temperature"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_target_hotbed_temperature_{serial}"
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-        self._attr_icon = "mdi:thermometer"
-
-    @property
-    def native_value(self):
-        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
-        if temp_report.get("target_hotbed_temp") is not None:
-            return temp_report.get("target_hotbed_temp")
-        temp_info = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
-        return temp_info.get("target_hotbed_temp")
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicPrintJobSensor(CoordinatorEntity, SensorEntity):
-    """Print job status sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Print Status"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_status_{serial}"
-        self._attr_icon = "mdi:printer-3d"
-
-    @property
-    def native_value(self):
-        info_data = self.coordinator.data.get("info", {}).get("data", {})
-        project = info_data.get("project", {})
-        state = project.get("state")
-        if state:
-            return state
-        return None
-
-    @property
-    def extra_state_attributes(self):
-        print_data = self.coordinator.data.get("print", {}).get("data", {})
-        return {
-            # "progress": print_data.get("progress"),
-            "curr_layer": print_data.get("curr_layer"),
-            "total_layers": print_data.get("total_layers"),
-            # "remain_time": print_data.get("remain_time"),
-            # "print_time": print_data.get("print_time"),
-            "filename": print_data.get("filename"),
-            "supplies_usage": print_data.get("supplies_usage"),
-        }
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-class AnycubicPrintProgressSensor(CoordinatorEntity, SensorEntity):
-    """Print progress sensor."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Print Progress"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_progress_{serial}"
-        self._attr_native_unit_of_measurement = "%"
-        self._attr_icon = "mdi:progress-clock"
-
-    @property
-    def native_value(self):
-        project = self.coordinator.data.get("info", {}).get("data", {}).get("project", {})
-        progress = project.get("progress")
-        if progress is not None:
-            return progress
-        return None
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-# Print time sensor for print_time and remain_time
-class AnycubicPrintTimeSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for print_time and remain_time in HH:MM format."""
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-        self._attr_name = "Print Time"
-        serial = self.coordinator.data.get("info", {}).get("data", {}).get("serial", "default")
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_print_time_{serial}"
-        self._attr_icon = "mdi:clock-outline"
-
-    @property
-    def native_value(self):
-        project = self.coordinator.data.get("info", {}).get("data", {}).get("project", {})
-        print_time = project.get("print_time")
-        remain_time = project.get("remain_time")
-        # Show as "print_time / remain_time" in HH:MM
-        return f"{minutes_to_hhmm(print_time)} / {minutes_to_hhmm(remain_time)}"
-
-    @property
-    def extra_state_attributes(self):
-        project = self.coordinator.data.get("info", {}).get("data", {}).get("project", {})
-        return {
-            "print_time": minutes_to_hhmm(project.get("print_time")),
-            "remain_time": minutes_to_hhmm(project.get("remain_time")),
-        }
-
-    @property
-    def device_info(self):
-        info = self.coordinator.data.get("info", {}).get("data", {})
-        return {
-            "identifiers": {(DOMAIN, "anycubic_wifi")},
-            "name": info.get("model", "Anycubic Printer"),
-            "manufacturer": "Anycubic",
-            "model": info.get("model", "Unknown"),
-            "sw_version": info.get("version", "Unknown"),
-        }
-
-# Box sensors
-class AceProBoxTempSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box temperature sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Temperature"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_temp_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:thermometer"
-        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-
-    @property
-    def native_value(self):
-        return self._box.get("temp")
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-class AceProBoxDryingSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box drying status sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Drying Status"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_drying_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:weather-windy"
-
-
-    @property
-    def native_value(self):
-        ds = self._box.get("drying_status", {})
-        status = ds.get("status")
-        target_temp = ds.get("target_temp")
-        status_map = {
-            0: "Not active",
-            1: "Drying",
-            2: "Completed",
-            3: "Error",
-            4: "Paused",
-        }
-        # Always map state from status code
-        return status_map.get(status, f"Unknown ({status})")
-
-    @property
-    def extra_state_attributes(self):
-            ds = self._box.get("drying_status", {})
-            target_temp = ds.get("target_temp")
-            duration = ds.get("duration")
-            remain_time = ds.get("remain_time")
-
-            attrs = {
-                "target_temp": target_temp if target_temp else "No target",
-            }
-            if duration is not None:
-                attrs["total_drying_time"] = minutes_to_hhmm(duration)
-            if remain_time is not None:
-                attrs["remaining_drying_time"] = minutes_to_hhmm(remain_time)
-            return attrs
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-class AceProBoxAutoFeedSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box auto feed sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Auto Feed"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_autofeed_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:autorenew"
-
-    @property
-    def native_value(self):
-        return self._box.get("auto_feed")
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-# --- Box extra sensors ---
-class AceProBoxFeedStatusSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box Feed Status sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Feed Status"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_feedstatus_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:progress-check"
-
-    @property
-    def native_value(self):
-        return self._box.get("feed_status", {}).get("current_status")
-
-    @property
-    def extra_state_attributes(self):
-        fs = self._box.get("feed_status", {})
-        return {
-            "code": fs.get("code"),
-            "type": fs.get("type"),
-            "slot_index": fs.get("slot_index"),
-        }
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-class AceProBoxLoadedSlotSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box Loaded Slot sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Loaded Slot"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_loadedslot_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:tray"
-
-    @property
-    def native_value(self):
-        return self._box.get("loaded_slot")
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-class AceProBoxModelIdSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box Model ID sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Model ID"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_modelid_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:identifier"
-
-    @property
-    def native_value(self):
-        return self._box.get("model_id")
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-class AceProBoxStatusSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box Status sensor."""
-    def __init__(self, coordinator, box):
-        super().__init__(coordinator)
-        self._box = box
-        self._attr_name = "Ace Pro Box Status"
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_status_{serial}_{box.get('id', 0)}"
-        self._attr_icon = "mdi:checkbox-marked-circle"
-
-    @property
-    def native_value(self):
-        return self._box.get("status")
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
-
-
-# Ace Pro Box Slot sensor for filament and color
-class AceProBoxSlotSensor(CoordinatorEntity, SensorEntity):
-    """Ace Pro Box Slot sensor for filament and color."""
-    def __init__(self, coordinator, box, index):
-        super().__init__(coordinator)
-        self._box = box
-        self._index = index
-        serial = coordinator.data.get("info", {}).get("data", {}).get("serial", box.get('id', 0))
-        self._attr_name = f"Slot {index}"
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_ace_pro_box_slot_{index}_{serial}_{box.get('id', 0)}"
-        # Icon will be set dynamically in property
-        self._icon_loaded = "mdi:tray-full"
-        self._icon_empty = "mdi:tray"
-
-    @property
-    def icon(self):
-        slot = self._get_slot()
-        if slot:
-            if slot.get("status") == 5:
-                return self._icon_loaded
-            if slot.get("status") == 4:
-                return self._icon_empty
-        return self._icon_empty
-
-    @property
-    def native_value(self):
-        slot = self._get_slot()
-        if slot:
-            if slot.get("status") == 4:
-                return "Empty"
-            slot_type = slot.get("type", "Unknown")
-            rgb = tuple(slot.get("color", [0,0,0]))
-            color_name = PLA_COLOR_MAP.get(rgb, str(rgb))
-            return f"{slot_type} ({color_name})"
-        return None
-
-    @property
-    def extra_state_attributes(self):
-        slot = self._get_slot()
-        attrs = {}
-        if slot:
-            status = slot.get("status")
-            status_map = {
-                0: "Unknown",
-                1: "Inserting",
-                2: "Removing",
-                3: "Error",
-                4: "Empty",
-                5: "Loaded",
-            }
-            attrs["status"] = status_map.get(status, f"Unknown ({status})")
-            attrs["sku"] = slot.get("sku", "")
-            if status == 5:
-                rgb = tuple(slot.get("color", [0,0,0]))
-                color_name = PLA_COLOR_MAP.get(rgb, str(rgb))
-                attrs["color"] = color_name
+        # Special handling for multiColorBox: definitions may be per_box templates
+        if top == MULTI_COLOR_BOX_KEY:
+            box_id = self.definition.get("box_id") or self.definition.get("device_index")
+            if box_id is None:
+                # fallback to first box
+                boxes = data.get("data", {}).get("multi_color_box", [])
+                box = boxes[0] if boxes else None
             else:
-                attrs["color"] = None
+                box = self._find_box_by_id(data, box_id)
+
+            if box is None:
+                return None
+
+            # If this is a slot sensor, return formatted slot info
+            if self._slot_index is not None:
+                slot = None
+                for s in box.get("slots", []):
+                    if s.get("index") == self._slot_index:
+                        slot = s
+                        break
+                if slot is None:
+                    return None
+
+                # format slot value similar to legacy AceProBoxSlotSensor
+                if slot.get("status") == 4:
+                    # empty slot
+                    self._attr_icon = "mdi:tray"
+                    return "Empty"
+
+                # filled slot
+                self._attr_icon = "mdi:tray-full"
+                slot_type = slot.get("type", "Unknown")
+                # Prefer explicit color_group if present (more accurate)
+                if slot.get("color_group"):
+                    color_input = slot.get("color_group")
+                else:
+                    color_input = tuple(slot.get("color", [0, 0, 0]))
+                color_name = nearest_color_name(color_input)
+                rgb = tuple(slot.get("color", [0, 0, 0]))
+                # store per-slot attributes for UI
+                self._slot_attrs = {
+                    "index": slot.get("index"),
+                    "sku": slot.get("sku"),
+                    "type": slot.get("type"),
+                    "color_rgb": rgb,
+                }
+                return f"{slot_type} ({color_name})"
+
+            # If a specific data_field is requested, support tuple path or str
+            if self._data_field:
+                if isinstance(self._data_field, tuple):
+                    val = box
+                    for p in self._data_field:
+                        val = val.get(p) if isinstance(val, dict) else None
+                        if val is None:
+                            break
+                    value = val
+                else:
+                    value = box.get(self._data_field)
+                # special-case for loaded_slot: expose index and store slot attrs
+                if self._data_field == "loaded_slot":
+                    loaded = value
+                    # default: unknown
+                    if loaded is None:
+                        return None
+                    # explicit -1 means empty: return canonical numeric -1
+                    try:
+                        if int(loaded) == -1:
+                            self._attr_icon = "mdi:package-variant-closed"
+                            self._loaded_slot_attrs = {}
+                            return "Empty"
+                    except Exception:
+                        pass
+                    li = int(loaded)
+                    # find slot metadata
+                    slot = None
+                    for s in box.get("slots", []):
+                        if s.get("index") == li:
+                            slot = s
+                            break
+                    if slot is None:
+                        self._attr_icon = "mdi:package-variant-closed"
+                        self._loaded_slot_attrs = {}
+                        return li
+                    # filled — use a distinct package icon for loaded_slot
+                    self._attr_icon = "mdi:package-variant"
+                    rgb = tuple(slot.get("color", [0, 0, 0]))
+                    color_name = nearest_color_name(rgb)
+                    self._loaded_slot_attrs = {
+                        "loaded_slot_index": li,
+                        "loaded_slot_sku": slot.get("sku"),
+                        "loaded_slot_type": slot.get("type"),
+                        "loaded_slot_color_rgb": rgb,
+                        "loaded_slot_color_name": color_name,
+                    }
+                    return li
+            else:
+                # default: follow rest path inside the box dict
+                value = get_from_path(box, rest[2:]) if len(rest) >= 2 else None
+        # Special handling for external filament rack (single-slot extfilbox)
+        if top == EXT_FILBOX_KEY:
+            # top-level stored data may be either the full message dict or
+            # already the inner 'data' section depending on MQTT normalization.
+            if isinstance(data, dict):
+                ext = data.get("data") if data.get("data") is not None else data
+            else:
+                ext = data or {}
+
+            # Interpret status flags: -1 often indicates 'not present' / empty
+            status_type = ext.get("status_type")
+            current_status = ext.get("current_status")
+            loaded_raw = ext.get("loaded")
+            # Parse loaded defensively (may be string or int)
+            try:
+                loaded = int(loaded_raw) if loaded_raw is not None else None
+            except Exception:
+                loaded = loaded_raw
+
+            # If both status flags indicate 'not present' treat as empty (canonical -1)
+            if status_type == -1 and current_status == -1:
+                _LOGGER.debug("extfilbox: status indicates not present (status_type=%s current_status=%s loaded=%s)", status_type, current_status, loaded_raw)
+                self._attr_icon = "mdi:package-variant-closed"
+                self._loaded_slot_attrs = {}
+                return "Empty"
+
+            # If loaded explicitly indicates empty, return canonical -1
+            if loaded in (0, -1):
+                self._attr_icon = "mdi:package-variant-closed"
+                self._loaded_slot_attrs = {}
+                return "Empty"
+
+            # If there is no loaded value at all, return Unknown (None)
+            if loaded is None:
+                return None
+
+            # Otherwise, expose the loaded slot info and attributes
+            li = loaded
+            rgb = tuple(ext.get("color", [0, 0, 0]))
+            color_name = nearest_color_name(rgb)
+            self._attr_icon = "mdi:package-variant"
+            self._loaded_slot_attrs = {
+                "loaded_slot_index": li,
+                "loaded_slot_type": ext.get("type"),
+                "loaded_slot_color_rgb": rgb,
+                "loaded_slot_color_name": color_name,
+            }
+            return li
+
+        else:
+            # Generic path handling for other top-level keys
+            value = get_from_path(data, rest)
+
+        # Ensure numeric sensors return numeric primitives (not lists)
+        if self._attr_native_unit_of_measurement == "°C":
+            # temp sensors should be a single numeric value
+            try:
+                if isinstance(value, list) and value:
+                    # sometimes the box-level data was left as list; try to extract temp
+                    if isinstance(value[0], dict) and "temp" in value[0]:
+                        value = value[0].get("temp")
+            except Exception:
+                pass
+
+        # Convert print supplies_usage to grams
+        if top == "print" and rest and rest[-1] == "supplies_usage":
+            try:
+                raw = int(value) if value is not None else None
+                grams, factor, method = _compute_supplies_from_raw(raw)
+                self._last_supplies_raw, self._last_supplies_factor, self._last_supplies_method = raw, factor, method
+                return round(grams, 2) if grams is not None else None
+            except Exception:
+                return value
+            
+        # Apply formatter if any
+        if self._formatter:
+            if self._formatter == "minutes_to_hhmm":
+                return minutes_to_hhmm(value)
+        return value
+
+    @property
+    def extra_state_attributes(self):
+        attrs = {}
+        # expose supplies usage converted value if available
+        if hasattr(self, "_last_supplies_raw"):
+            attrs["supplies_usage_raw"] = getattr(self, "_last_supplies_raw")
+            # expose which method was used to compute grams
+            attrs["supplies_usage_method"] = getattr(self, "_last_supplies_method", None)
+        # expose loaded slot attributes (for both Ace Pro boxes and extfilbox)
+        if hasattr(self, "_loaded_slot_attrs") and self._loaded_slot_attrs:
+            attrs.update(self._loaded_slot_attrs)
+        # expose per-slot attributes when available
+        if hasattr(self, "_slot_attrs") and self._slot_attrs:
+            attrs.update(self._slot_attrs)
+        # Inform in logs when webcolors isn't available (user may expect CSS3 names)
+        if not _HAS_WEBCOLORS:
+            attrs.setdefault("color_naming", "heuristic")
         return attrs
 
-    def _get_slot(self):
-        for slot in self._box.get("slots", []):
-            if slot.get("index") == self._index:
-                return slot
-        return None
-
     @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, "anycubic_ace_pro")},
-            "name": "Ace Pro",
-            "manufacturer": "Anycubic",
-            "model": "Ace Pro",
-        }
+    def device_info(self) -> dict:
+        """Get device info based on sensor definition device type."""
+        dt = self.definition.get("device_type")
+        entry_id = getattr(self.coordinator.config_entry, "entry_id", "unknown")
+        
+        if dt == DEVICE_TYPE_ACE_PRO:
+            box_id = self.definition.get("device_index", 0)
+            return {"identifiers": {(DOMAIN, f"{entry_id}_ace_pro_box_{box_id}")}, **ACE_PRO_DEVICE_BASE}
+        elif dt == DEVICE_TYPE_EXTFILBOX:
+            return {"identifiers": {(DOMAIN, f"{entry_id}_extfilbox")}, **EXTFILBOX_DEVICE_BASE}
+        else:
+            return {
+            "identifiers": {(DOMAIN, entry_id)},
+            "name": self.coordinator.config_entry.title,
+            "manufacturer": MANUFACTURER,
+            "model": MODEL,
+            "entry_type": "service",
+            }
+
+    def _find_box_by_id(self, top_level_data: dict, box_id: int) -> Optional[dict]:
+        """Find a multicolor box by its `id` field inside coordinator data.
+
+        top_level_data is the dict under MULTI_COLOR_BOX_KEY (e.g. coordinator.data[MULTI_COLOR_BOX_KEY]).
+        """
+        boxes = top_level_data.get("data", {}).get("multi_color_box", [])
+        for b in boxes:
+            if b.get("id") == box_id:
+                return b
+        return None
