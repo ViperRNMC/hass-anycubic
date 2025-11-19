@@ -4,12 +4,11 @@ This module centralises all entity definitions and small configuration
 constants used by the integration. Keep comments and names concise and in
 English for consistency.
 """
-
 DOMAIN = "anycubic_wifi"
 MANUFACTURER = "Anycubic"
 MODEL = "Kobra S1"
 
-# Device type constants and ID formats
+# Device type constants
 DEVICE_TYPE_PRINTER = "printer"
 DEVICE_TYPE_ACE_PRO = "ace_pro"
 DEVICE_TYPE_EXTFILBOX = "extfilbox"
@@ -20,6 +19,10 @@ EXTFILBOX_DEVICE_ID_FORMAT = "{entry_id}_extfilbox"
 # Top-level keys used in coordinator.data
 MULTI_COLOR_BOX_KEY = "multiColorBox"
 EXT_FILBOX_KEY = "extfilbox"
+VIDEO_KEY = "video"
+
+# Camera default name
+CAMERA_NAME = "Printer Camera"
 
 # Filament geometry settings
 # Change `FILAMENT_DIAMETER_MM` if you use a different filament diameter
@@ -104,7 +107,7 @@ BUTTON_DEFINITIONS = [
 # Select definitions (print speed modes)
 SELECT_DEFINITIONS = [
     {
-        "name": "Print Speed Mode",
+        "name": "Speed",
         "key": "print_speed_mode",
         "icon": "mdi:run",
         "options": ["silent", "standard", "sport"],
@@ -319,8 +322,8 @@ SENSOR_DEFINITIONS = [
         "per_box": True,
         },
         {
-        "name": "Loaded Slot",
-        "key": "ace_pro_box_{box_id}_loaded_slot",
+        "name": "Loaded",
+        "key": "ace_pro_box_{box_id}_loaded",
         "data_path": (MULTI_COLOR_BOX_KEY, "data", "multi_color_box"),
         "data_field": "loaded_slot",
         "icon": "mdi:folder-arrow-right",
@@ -339,11 +342,20 @@ SENSOR_DEFINITIONS = [
         },
     # External Filament Rack 
     {
-        "name": "External Filament Rack Loaded",
+        "name": "Loaded",
         "key": "extfilbox_loaded",
         "data_path": (EXT_FILBOX_KEY, "data", "loaded"),
         "icon": "mdi:package-variant-closed",
         "device_type": DEVICE_TYPE_EXTFILBOX,
+    },
+    {
+        "name": "Slot",
+        "key": "extfilbox_slot",
+        "data_path": (EXT_FILBOX_KEY, "data", "multi_color_box", 0),
+        "icon": "mdi:tray",
+        "device_type": DEVICE_TYPE_EXTFILBOX,
+        "per_box": False,
+        "per_slot": False,
     },
 ]
 
