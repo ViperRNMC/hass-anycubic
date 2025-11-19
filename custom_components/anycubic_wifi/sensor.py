@@ -319,16 +319,47 @@ class AnycubicSensor(CoordinatorEntity, SensorEntity):
             # Generic path handling for other top-level keys
             value = get_from_path(data, rest)
 
-        # Ensure numeric sensors return numeric primitives (not lists)
-        if self._attr_native_unit_of_measurement == "°C":
-            # temp sensors should be a single numeric value
+        # Ensure numeric sensors return numeric primitives (not lists/dicts).
+        # If a numeric unit is configured (e.g. °C), try to extract a numeric
+        # value from common nested shapes; otherwise return None to avoid
+        # Home Assistant raising a ValueError when a numeric sensor yields
+        # a non-numeric type (like list/dict).
+        unit = self._attr_native_unit_of_measurement
+        if unit is not None and isinstance(value, (list, dict)):
             try:
+                # Lists: try first element numeric or dict with known numeric keys
                 if isinstance(value, list) and value:
-                    # sometimes the box-level data was left as list; try to extract temp
-                    if isinstance(value[0], dict) and "temp" in value[0]:
-                        value = value[0].get("temp")
+                    first = value[0]
+                    if isinstance(first, dict):
+                        for k in ("temp", "value", "temperature", "t"):
+                            if k in first:
+                                value = first.get(k)
+                                break
+                    else:
+                        # list of primitives: take first numeric-like
+                        for item in value:
+                            if isinstance(item, (int, float)):
+                                value = item
+                                break
+                            if isinstance(item, str):
+                                try:
+                                    value = float(item)
+                                    break
+                                except Exception:
+                                    continue
+                elif isinstance(value, dict):
+                    for k in ("temp", "value", "temperature", "t"):
+                        if k in value:
+                            value = value.get(k)
+                            break
             except Exception:
-                pass
+                # Fall through and let the post-check return None
+                value = None
+
+            # If extraction didn't produce a primitive numeric value, avoid
+            # returning the original list/dict which would cause HA to error.
+            if isinstance(value, (list, dict)):
+                return None
 
         # Convert print supplies_usage to grams
         if top == "print" and rest and rest[-1] == "supplies_usage":
