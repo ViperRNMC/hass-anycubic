@@ -1,0 +1,1 @@
+"""Cloud transport adapter."""
