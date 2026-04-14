@@ -383,10 +383,10 @@ class AnycubicAPIBase:
             return resp
 
         data: dict[str, Any] | None = resp['data']
-        if resp and resp.get('msg') == 'request error':
-            raise AnycubicAPIParsingError(ErrorsAPIParsing.api_error_user_server_maintenance)
         if data is None:
             raise AnycubicAuthTokensExpired(ErrorsAuthTokenExpired.invalid_credentials)
+        if resp and resp.get('msg') == 'request error':
+            raise AnycubicAPIParsingError(ErrorsAPIParsing.api_error_user_server_maintenance)
 
         self.anycubic_auth.set_api_user_id(data['id'])
         self.anycubic_auth.set_api_user_email(data['user_email'])

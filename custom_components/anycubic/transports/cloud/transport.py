@@ -220,7 +220,7 @@ class CloudTransport(AnycubicTransport):
                         "remain_time": p.primary_drying_status_remaining_time,
                     },
                     "slots": primary_slots,
-                    "loaded_slot": None,
+                    "loaded_slot": p.primary_multi_color_box_loaded_slot,
                     "firmware": p.primary_multi_color_box_fw_firmware_version,
                 }
             )
@@ -238,7 +238,7 @@ class CloudTransport(AnycubicTransport):
                         "remain_time": p.secondary_drying_status_remaining_time,
                     },
                     "slots": secondary_slots,
-                    "loaded_slot": None,
+                    "loaded_slot": p.secondary_multi_color_box_loaded_slot,
                     "firmware": p.secondary_multi_color_box_fw_firmware_version,
                 }
             )

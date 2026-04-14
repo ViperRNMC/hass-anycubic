@@ -299,7 +299,7 @@ class AnycubicSensor(CoordinatorEntity, SensorEntity):
                     if slot is None:
                         self._attr_icon = "mdi:package-variant-closed"
                         self._loaded_slot_attrs = {}
-                        return li
+                        return li + 1
                     # filled — use a distinct package icon for loaded_slot
                     self._attr_icon = "mdi:package-variant"
                     rgb = tuple(slot.get("color", [0, 0, 0]))
@@ -311,7 +311,7 @@ class AnycubicSensor(CoordinatorEntity, SensorEntity):
                         "loaded_slot_color_rgb": rgb,
                         "loaded_slot_color_name": color_name,
                     }
-                    return li
+                    return li + 1
             else:
                 # default: follow rest path inside the box dict
                 value = get_from_path(box, rest[2:]) if len(rest) >= 2 else None
