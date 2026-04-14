@@ -16,7 +16,7 @@ This integration allows you to connect Anycubic 3D printers to Home Assistant vi
 
 ## Installation
 
-1. Copy the `anycubic_wifi` folder to your Home Assistant `custom_components` directory.
+1. Copy the `anycubic` folder to your Home Assistant `custom_components` directory.
 2. Add the integration via the Home Assistant UI and enter the IP address of your Anycubic printer.
 
 ### Installation via HACS (recommended)
@@ -29,7 +29,7 @@ This integration allows you to connect Anycubic 3D printers to Home Assistant vi
 3. Restart Home Assistant
 4. Add the integration via **Settings → Devices & Services**
 
-	[![Open your Home Assistant instance and show the integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=anycubic_wifi)
+	[![Open your Home Assistant instance and show the integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=anycubic)
 
 5. Enter the IP address of your Anycubic printer
 

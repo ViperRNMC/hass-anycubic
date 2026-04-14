@@ -1,0 +1,277 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Integration is already configured",
+            "reauth_successful": "Re-authentication was successful",
+            "reconfigure_successful": "Reconfiguration was successful"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication token",
+            "no_printers": "No printers found. Check your account.",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "title": "Choose connection mode",
+                "menu_options": {
+                    "lan_setup": "LAN / Wi-Fi (direct connection)",
+                    "cloud_auth_mode_pick": "Cloud (Anycubic account)"
+                }
+            },
+            "lan_setup": {
+                "title": "LAN connection",
+                "data": {
+                    "host": "Printer IP address or hostname"
+                }
+            },
+            "cloud_auth_mode_pick": {
+                "title": "Choose authentication method",
+                "menu_options": {
+                    "cloud_auth_web": "Web token (no MQTT)",
+                    "cloud_auth_slicer": "Slicer token",
+                    "cloud_auth_android": "Android token"
+                }
+            },
+            "cloud_auth_web": {
+                "title": "Web authentication",
+                "description": "Paste the `XX-Token` value from the Anycubic Cloud website.",
+                "data": {
+                    "user_token": "User Token"
+                }
+            },
+            "cloud_auth_slicer": {
+                "title": "Slicer authentication",
+                "description": "Paste the `access_token` from AnycubicSlicerNext config file.",
+                "data": {
+                    "user_token": "Slicer Access Token"
+                }
+            },
+            "cloud_auth_android": {
+                "title": "Android authentication",
+                "data": {
+                    "user_token": "User Token",
+                    "user_device_id": "Device ID"
+                }
+            },
+            "cloud_printer": {
+                "title": "Select printer(s)",
+                "data": {
+                    "printer_id_list": "Printers"
+                }
+            },
+            "cloud_reauth_or_printer": {
+                "title": "Reconfigure",
+                "menu_options": {
+                    "cloud_auth_mode_pick": "Re-authenticate",
+                    "cloud_printer": "Change printer selection"
+                }
+            }
+        }
+    },
+    "options": {
+        "abort": {
+            "mode_unchanged": "Already using this connection mode"
+        },
+        "step": {
+            "init": {
+                "title": "Configure Anycubic",
+                "menu_options": {
+                    "settings": "Settings (filament, etc.)",
+                    "switch_mode": "Switch connection mode"
+                }
+            },
+            "settings": {
+                "title": "Settings",
+                "data": {
+                    "filament_diameter_mm": "Filament diameter (mm)"
+                }
+            },
+            "switch_mode": {
+                "title": "Connection mode",
+                "description": "Current mode: {current_mode}",
+                "data": {
+                    "connection_mode": "Connection mode"
+                }
+            },
+            "lan_setup": {
+                "title": "LAN connection",
+                "data": {
+                    "host": "Printer IP address or hostname"
+                }
+            },
+            "cloud_auth_mode_pick": {
+                "title": "Choose authentication method",
+                "menu_options": {
+                    "cloud_auth_web": "Web token (no MQTT)",
+                    "cloud_auth_slicer": "Slicer token",
+                    "cloud_auth_android": "Android token"
+                }
+            },
+            "cloud_auth_web": {
+                "title": "Web authentication",
+                "data": {
+                    "user_token": "User Token"
+                }
+            },
+            "cloud_auth_slicer": {
+                "title": "Slicer authentication",
+                "data": {
+                    "user_token": "Slicer Access Token"
+                }
+            },
+            "cloud_auth_android": {
+                "title": "Android authentication",
+                "data": {
+                    "user_token": "User Token",
+                    "user_device_id": "Device ID"
+                }
+            },
+            "cloud_printer": {
+                "title": "Select printer(s)",
+                "data": {
+                    "printer_id_list": "Printers"
+                }
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "print_problem": {"name": "Print Problem"},
+            "nozzle_heating": {"name": "Nozzle Heating"},
+            "bed_heating": {"name": "Bed Heating"},
+            "job_in_progress": {"name": "Print In Progress"},
+            "job_complete": {"name": "Print Complete"},
+            "job_failed": {"name": "Print Failed"},
+            "job_is_paused": {"name": "Print Is Paused"},
+            "printer_online": {"name": "Printer Online"},
+            "is_busy": {"name": "Is Busy"},
+            "is_available": {"name": "Is Available"},
+            "dry_status_is_drying": {"name": "Dry Status Is Drying"},
+            "secondary_dry_status_is_drying": {"name": "Dry Status Is Drying"}
+        },
+        "button": {
+            "home_all": {"name": "Home All"},
+            "home_xy": {"name": "Home XY"},
+            "home_z": {"name": "Home Z"},
+            "pause_print": {"name": "Print Pause"},
+            "resume_print": {"name": "Print Resume"},
+            "cancel_print": {"name": "Print Stop"},
+            "request_file_list_local": {"name": "Request File List Local"},
+            "request_file_list_udisk": {"name": "Request File List Udisk"},
+            "drying_stop": {"name": "Drying Stop"},
+            "secondary_drying_stop": {"name": "Drying Stop"},
+            "request_file_list_cloud": {"name": "Request File List Cloud"}
+        },
+        "image": {
+            "job_image_url": {"name": "Print Image"}
+        },
+        "fan": {
+            "main": {"name": "Main Fan"},
+            "aux": {"name": "Aux Fan"},
+            "box": {"name": "Box Fan"},
+            "fan_speed_pct": {"name": "Fan Speed"},
+            "aux_fan_speed_pct": {"name": "Aux Fan Speed"},
+            "box_fan_level": {"name": "Box Fan Speed"}
+        },
+        "light": {
+            "chamber_printer": {"name": "Chamber Light"}
+        },
+        "number": {
+            "target_nozzle_temp": {"name": "Target Nozzle Temperature"},
+            "target_hotbed_temp": {"name": "Target Hotbed Temperature"},
+            "ace_pro_drying_target": {"name": "Drying Target"},
+            "ace_pro_drying_duration": {"name": "Drying Duration"}
+        },
+        "select": {
+            "print_speed_mode": {"name": "Speed"}
+        },
+        "sensor": {
+            "printer_info": {"name": "Printer Info"},
+            "printer_model": {"name": "Model"},
+            "printer_ip": {"name": "IP"},
+            "printer_firmware": {"name": "Firmware"},
+            "nozzle_temp": {"name": "Nozzle Temperature"},
+            "hotbed_temp": {"name": "Hotbed Temperature"},
+            "print_status": {"name": "Print Status"},
+            "print_progress": {"name": "Print Progress"},
+            "print_curr_layer": {"name": "Print Current Layer"},
+            "print_filename": {"name": "Print Filename"},
+            "print_time": {"name": "Print Time"},
+            "print_remain_time": {"name": "Print Remaining Time"},
+            "print_model_name": {"name": "Print Model Name"},
+            "print_supplies_usage": {"name": "Print Supplies Usage"},
+            "print_total_layers": {"name": "Print Total Layers"},
+            "{box_id}_temp": {"name": "Temperature"},
+            "ace_pro_box_{box_id}_loaded": {"name": "Loaded"},
+            "ace_pro_box_{box_id}_slot_{slot_index}": {"name": "Slot"},
+            "ace_pro_box_{box_id}_firmware": {"name": "Firmware"},
+            "ace_pro_box_{box_id}_model": {"name": "Model"},
+            "ace_pro_box_{box_id}_dryer_status": {"name": "Dryer Status"},
+            "ace_pro_box_{box_id}_dryer_target": {"name": "Dryer Target Temp"},
+            "ace_pro_box_{box_id}_dryer_duration": {"name": "Dryer Duration"},
+            "ace_pro_box_{box_id}_dryer_remain": {"name": "Dryer Remain Time"},
+            "ace_pro_auto_refill": {"name": "Auto Refill"},
+            "ace_pro_cutter_state": {"name": "Cutter State"},
+            "ace_pro_current_filament": {"name": "Current Filament"},
+            "ace_pro_ext_spool": {"name": "External Spool"},
+            "ace_pro_ext_spool_status": {"name": "External Spool Status"},
+            "ace_pro_filament_present": {"name": "Filament Present"},
+            "ace_pro_tracker_length": {"name": "Tracker Detection Length"},
+            "ace_pro_tracker_present": {"name": "Tracker Filament Present"},
+            "extfilbox_loaded": {"name": "Loaded"},
+            "extfilbox_slot": {"name": "Slot"},
+            "current_status": {"name": "Current Status"},
+            "job_name": {"name": "Print Name"},
+            "job_progress": {"name": "Print Progress"},
+            "job_time_elapsed": {"name": "Print Time Elapsed"},
+            "job_time_remaining": {"name": "Print Time Remaining"},
+            "job_state": {"name": "Print State"},
+            "job_eta": {"name": "Print ETA"},
+            "job_current_layer": {"name": "Print Current Layer"},
+            "job_total_layers": {"name": "Print Total Layers"},
+            "job_speed_mode": {"name": "Print Speed Mode"},
+            "curr_nozzle_temp": {"name": "Current Nozzle Temperature"},
+            "curr_hotbed_temp": {"name": "Current Hotbed Temperature"},
+            "target_nozzle_temp": {"name": "Target Nozzle Temperature"},
+            "target_hotbed_temp": {"name": "Target Hotbed Temperature"},
+            "print_speed_pct": {"name": "Print Speed"},
+            "ace_current_temperature": {"name": "ACE Current Temperature"},
+            "ace_spools": {"name": "ACE Spools"},
+            "ace_pro_attributes": {"name": "ACE Pro Attributes"},
+            "ace_pro_1_firmware": {"name": "ACE Pro 1 Firmware"},
+            "ace_pro_1_dryer_status": {"name": "ACE Pro 1 Dryer Status"},
+            "ace_pro_1_dryer_target_temp": {"name": "ACE Pro 1 Dryer Target Temperature"},
+            "ace_pro_1_dryer_duration": {"name": "ACE Pro 1 Dryer Duration"},
+            "ace_pro_1_dryer_remain_time": {"name": "ACE Pro 1 Dryer Remaining Time"},
+            "ace_pro_1_slot_1": {"name": "ACE Pro 1 Slot 1"},
+            "ace_pro_1_slot_2": {"name": "ACE Pro 1 Slot 2"},
+            "ace_pro_1_slot_3": {"name": "ACE Pro 1 Slot 3"},
+            "ace_pro_1_slot_4": {"name": "ACE Pro 1 Slot 4"},
+            "secondary_ace_pro_attributes": {"name": "ACE Pro 2 Attributes"},
+            "ace_pro_2_firmware": {"name": "ACE Pro 2 Firmware"},
+            "ace_pro_2_dryer_status": {"name": "ACE Pro 2 Dryer Status"},
+            "ace_pro_2_dryer_target_temp": {"name": "ACE Pro 2 Dryer Target Temperature"},
+            "ace_pro_2_dryer_duration": {"name": "ACE Pro 2 Dryer Duration"},
+            "ace_pro_2_dryer_remain_time": {"name": "ACE Pro 2 Dryer Remaining Time"},
+            "ace_pro_2_slot_1": {"name": "ACE Pro 2 Slot 1"},
+            "ace_pro_2_slot_2": {"name": "ACE Pro 2 Slot 2"},
+            "ace_pro_2_slot_3": {"name": "ACE Pro 2 Slot 3"},
+            "ace_pro_2_slot_4": {"name": "ACE Pro 2 Slot 4"}
+        },
+        "switch": {
+            "ace_pro_drying": {"name": "Drying"},
+            "ace_pro_auto_feed": {"name": "Auto Feed"},
+            "ace_pro_box_{box_id}_drying": {"name": "Drying"},
+            "ace_pro_box_{box_id}_auto_feed": {"name": "Auto Feed"},
+            "multi_color_box_runout_refill": {"name": "Runout Refill"},
+            "secondary_multi_color_box_runout_refill": {"name": "Runout Refill"},
+            "manual_mqtt_connection_enabled": {"name": "MQTT Debug Logging"}
+        },
+        "update": {
+            "fw_version": {"name": "Firmware"},
+            "multi_color_box_fw_version": {"name": "ACE Firmware"},
+            "secondary_multi_color_box_fw_version": {"name": "ACE 2 Firmware"}
+        }
+    }
+}

@@ -1,0 +1,3 @@
+- [ ] select speed
+- [ ] dry box
+- [ ] dry duration
