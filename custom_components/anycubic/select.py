@@ -8,8 +8,8 @@ from typing import Any
 from homeassistant.components.select import SelectEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ..const import DOMAIN, SELECT_DEFINITIONS
-from ..helper.device_info import build_main_device_info
+from .const import DOMAIN, SELECT_DEFINITIONS
+from .helper.device_info import build_main_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,9 +53,10 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
         val = info.get("print_speed_mode")
         if val is None:
             return None
+        effective_map = self._get_effective_value_map(info)
         # reverse map
-        for k, v in self._value_map.items():
-            if v == val:
+        for k, v in effective_map.items():
+            if v == int(val):
                 return k
         return None
 
@@ -63,7 +64,8 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
         if option not in self._attr_options:
             _LOGGER.debug("Invalid option selected: %s", option)
             return
-        mapped = self._value_map.get(option)
+        info = self.coordinator.data.get("info", {}).get("data", {})
+        mapped = self._get_effective_value_map(info).get(option)
         if mapped is None:
             _LOGGER.debug("No mapping for option %s", option)
             return
@@ -73,6 +75,23 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
             await self.coordinator.async_send_command("print", "setPrintSpeedMode", {"print_speed_mode": mapped})
         except Exception as err:  # pragma: no cover - defensive
             _LOGGER.debug("Failed to send print_speed_mode change: %s", err)
+
+    def _get_effective_value_map(self, info: dict[str, Any]) -> dict[str, int]:
+        """Prefer cloud-provided mode mapping; fall back to static defaults."""
+        cloud_map = info.get("print_speed_mode_map")
+        if isinstance(cloud_map, dict):
+            dynamic_map: dict[str, int] = {}
+            for option in self._attr_options:
+                if option not in cloud_map:
+                    continue
+                try:
+                    dynamic_map[option] = int(cloud_map[option])
+                except (TypeError, ValueError):
+                    continue
+            if dynamic_map:
+                return dynamic_map
+
+        return {k: int(v) for k, v in self._value_map.items()}
 
     @property
     def device_info(self) -> dict:
