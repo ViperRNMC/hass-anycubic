@@ -785,6 +785,10 @@ class AnycubicPrinter:
         state: str,
         payload: AnycubicConsumableData,
     ) -> None:
+        if action == 'set' and state == 'done':
+            # Confirmation response after a temperature change; the actual
+            # values arrive via the subsequent query/auto report.
+            return
         if action in ['auto', 'query'] and state in ['done', 'success']:
             data = payload.get('data', {})
 
@@ -1230,6 +1234,20 @@ class AnycubicPrinter:
         else:
             raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.peripherals)
 
+    def _process_mqtt_update_axis(
+        self,
+        action: str,
+        state: str,
+        payload: AnycubicConsumableData,
+    ) -> None:
+        # Homing/move acknowledgements return action=move, state=done and no data.
+        if action in ['move', 'query'] and state in ['done', 'success', 'busy', 'free']:
+            data = payload.get('data')
+            if isinstance(data, AnycubicConsumableData):
+                data.force_empty()
+            return
+        raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.unknown.format('axis'))
+
     def process_mqtt_update(
         self,
         topic: str,
@@ -1283,6 +1301,9 @@ class AnycubicPrinter:
 
         elif msg_type == 'peripherie':
             self._process_mqtt_update_peripherals(action, state, payload)
+
+        elif msg_type == 'axis':
+            self._process_mqtt_update_axis(action, state, payload)
 
         elif msg_type == 'skip':
             # Skip messages are informational responses from cloud (e.g. query responses); no action needed

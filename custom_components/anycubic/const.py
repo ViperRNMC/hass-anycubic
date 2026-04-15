@@ -118,6 +118,22 @@ BUTTON_DEFINITIONS = [
         "action": "resume",
         "icon": "mdi:play",
     },
+    {
+        "name": "Nozzle Heater Off",
+        "key": "nozzle_heater_off",
+        "type": "temperature",
+        "action": "setNozzleTemp",
+        "data": {"target_nozzle_temp": 0},
+        "icon": "mdi:printer-3d-nozzle-off",
+    },
+    {
+        "name": "Bed Heater Off",
+        "key": "bed_heater_off",
+        "type": "temperature",
+        "action": "setHotbedTemp",
+        "data": {"target_hotbed_temp": 0},
+        "icon": "mdi:heating-coil",
+    },
 ]
 
 # Select definitions (print speed modes)
@@ -188,7 +204,7 @@ NUMBER_DEFINITIONS = [
         "name": "Target Nozzle Temperature",
         "key": "target_nozzle_temp",
         "data_key": "target_nozzle_temp",
-        "min": 185,
+        "min": 0,
         "max": 320,
         "icon": "mdi:printer-3d-nozzle",
     },
@@ -196,7 +212,7 @@ NUMBER_DEFINITIONS = [
         "name": "Target Hotbed Temperature",
         "key": "target_hotbed_temp",
         "data_key": "target_hotbed_temp",
-        "min": 35,
+        "min": 0,
         "max": 120,
         "icon": "mdi:heating-coil",
     },

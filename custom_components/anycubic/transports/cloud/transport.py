@@ -85,6 +85,8 @@ class CloudTransport(AnycubicTransport):
         self._mqtt_auth_fingerprint: tuple[Any, ...] | None = None
         self._consecutive_periodic_auth_failures = 0
         self._camera_stream_blocked_reason: str | None = None
+        self._forced_temperature_off: set[str] = set()
+        self._forced_temperature_off_last_publish: dict[str, float] = {}
 
     async def async_setup(self, on_data: Callable[[dict], None]) -> None:
         self._on_data = on_data
@@ -257,6 +259,12 @@ class CloudTransport(AnycubicTransport):
         )
         resolved_speed_mode = self._resolve_print_speed_mode(p)
         resolved_fan_speed = self._resolve_fan_speed_pct(p)
+        target_nozzle_temp = self._apply_forced_temperature_off(
+            "target_nozzle_temp", p.latest_project_target_nozzle_temp
+        )
+        target_hotbed_temp = self._apply_forced_temperature_off(
+            "target_hotbed_temp", p.latest_project_target_hotbed_temp
+        )
 
         print_data = {
             "state": p.latest_project_print_status,
@@ -269,8 +277,8 @@ class CloudTransport(AnycubicTransport):
             "remain_time": p.latest_project_print_time_remaining_minutes,
             "supplies_usage": p.latest_project_print_supplies_usage,
             "total_layers": p.latest_project_print_total_layers,
-            "target_nozzle_temp": p.latest_project_target_nozzle_temp,
-            "target_hotbed_temp": p.latest_project_target_hotbed_temp,
+            "target_nozzle_temp": target_nozzle_temp,
+            "target_hotbed_temp": target_hotbed_temp,
             "print_speed_mode": resolved_speed_mode,
             "fan_speed_pct": resolved_fan_speed,
             "source_info": {
@@ -349,6 +357,8 @@ class CloudTransport(AnycubicTransport):
                 "data": {
                     "curr_nozzle_temp": p.curr_nozzle_temp,
                     "curr_hotbed_temp": p.curr_hotbed_temp,
+                    "target_nozzle_temp": target_nozzle_temp,
+                    "target_hotbed_temp": target_hotbed_temp,
                 },
             },
             "fan": {
@@ -379,6 +389,41 @@ class CloudTransport(AnycubicTransport):
             },
         }
         self._on_data(normalized)
+
+    def _apply_forced_temperature_off(self, key: str, reported_target: Any) -> int:
+        """Keep heater target off even if cloud auto updates restore stale targets."""
+        try:
+            target = int(reported_target or 0)
+        except (TypeError, ValueError):
+            target = 0
+
+        if key not in self._forced_temperature_off:
+            return target
+
+        # Bed reports 1 as effective-off on some firmware variants.
+        off_threshold = 1 if key == "target_hotbed_temp" else 0
+        if target <= off_threshold:
+            return 0
+
+        now = time.monotonic()
+        last_publish = self._forced_temperature_off_last_publish.get(key, 0.0)
+        # Guard against tight resend loops while still correcting stale auto restores.
+        if now - last_publish >= 2.0:
+            if self._publish_cloud_mqtt_command(
+                "tempature",
+                "set",
+                {key: 0},
+                publish_to_slicer=True,
+            ):
+                self._forced_temperature_off_last_publish[key] = now
+                _LOGGER.debug(
+                    "Cloud heater-off override reapplied for %s (reported target=%s)",
+                    key,
+                    target,
+                )
+
+        # Keep HA state consistent with user's explicit off command.
+        return 0
 
     @staticmethod
     def _resolve_print_speed_mode(printer: Any) -> int | None:
@@ -501,6 +546,10 @@ class CloudTransport(AnycubicTransport):
             return
         printer = self._selected_printer
 
+        if msg_type == "axis" and isinstance(data, dict):
+            self._publish_cloud_mqtt_command("axis", action, data, publish_to_slicer=True)
+            return
+
         if msg_type == "video":
             if action in ("startCapture", "query"):
                 await self.async_open_camera_stream()
@@ -523,10 +572,16 @@ class CloudTransport(AnycubicTransport):
                 await printer.change_print_setting_speed_mode(int(data.get("print_speed_mode", 0)))
                 return
             if action == "setNozzleTemp" and isinstance(data, dict):
-                await printer.change_print_setting_target_nozzle_temp(int(data.get("target_nozzle_temp", 0)))
+                await self._send_cloud_temperature_command(
+                    "target_nozzle_temp",
+                    int(data.get("target_nozzle_temp", 0)),
+                )
                 return
             if action == "setHotbedTemp" and isinstance(data, dict):
-                await printer.change_print_setting_target_hotbed_temp(int(data.get("target_hotbed_temp", 0)))
+                await self._send_cloud_temperature_command(
+                    "target_hotbed_temp",
+                    int(data.get("target_hotbed_temp", 0)),
+                )
                 return
             if action == "setFanSpeed" and isinstance(data, dict):
                 await self._send_cloud_fan_command({"fan_speed_pct": int(data.get("fan_speed_pct", 0))})
@@ -590,7 +645,14 @@ class CloudTransport(AnycubicTransport):
 
         _LOGGER.debug("Cloud command not mapped yet: %s/%s (%s)", msg_type, action, data)
 
-    def _publish_cloud_mqtt_command(self, endpoint: str, action: str, data: Any = None) -> bool:
+    def _publish_cloud_mqtt_command(
+        self,
+        endpoint: str,
+        action: str,
+        data: Any = None,
+        *,
+        publish_to_slicer: bool = False,
+    ) -> bool:
         if not self._selected_printer or self._api is None or not self._api.mqtt_is_started:
             return False
 
@@ -603,6 +665,8 @@ class CloudTransport(AnycubicTransport):
         }
         try:
             self._api._mqtt_publish_to_printer(self._selected_printer, endpoint, payload)
+            if publish_to_slicer:
+                self._api._mqtt_publish_to_printer_slicer(self._selected_printer, endpoint, payload)
             return True
         except Exception as err:
             _LOGGER.debug("Cloud MQTT publish failed for %s/%s: %s", endpoint, action, err)
@@ -663,6 +727,98 @@ class CloudTransport(AnycubicTransport):
                 "data": fan_payload,
             })
 
+    async def _send_cloud_print_settings_command(
+        self,
+        settings: dict[str, int],
+        query_topics: tuple[str, ...] = (),
+    ) -> None:
+        """Send print setting updates over MQTT so idle printers still accept them."""
+        if not self._selected_printer or self._api is None or not self._api.mqtt_is_started:
+            return
+
+        printer = self._selected_printer
+        project_id = getattr(getattr(printer, "latest_project", None), "id", None)
+        taskid = str(project_id) if project_id is not None else "-1"
+
+        payload = {
+            "type": "print",
+            "action": "update",
+            "timestamp": int(time.time() * 1000),
+            "msgid": str(uuid.uuid4()),
+            "data": {
+                "taskid": taskid,
+                "settings": {key: int(value) for key, value in settings.items()},
+            },
+        }
+
+        self._api._mqtt_publish_to_printer(printer, "print", payload)
+        self._api._mqtt_publish_to_printer_slicer(printer, "print", payload)
+
+        for topic in query_topics:
+            query_payload = {
+                "type": topic,
+                "action": "query",
+                "timestamp": int(time.time() * 1000),
+                "msgid": str(uuid.uuid4()),
+                "data": None,
+            }
+            self._api._mqtt_publish_to_printer(printer, topic, query_payload)
+            self._api._mqtt_publish_to_printer_slicer(printer, topic, query_payload)
+
+    async def _send_cloud_temperature_command(self, key: str, value: int) -> None:
+        """Send temperature target changes with an off-compatible fallback path."""
+        if key not in {"target_nozzle_temp", "target_hotbed_temp"}:
+            return
+
+        requested = int(value)
+        if requested != 0:
+            if not self._selected_printer:
+                return
+
+            self._forced_temperature_off.discard(key)
+            self._forced_temperature_off_last_publish.pop(key, None)
+
+            printer = self._selected_printer
+            current_nozzle = int(getattr(printer, "latest_project_target_nozzle_temp", 0) or 0)
+            current_hotbed = int(getattr(printer, "latest_project_target_hotbed_temp", 0) or 0)
+
+            # Keep explicit off-lock values pinned while adjusting the other heater.
+            if "target_nozzle_temp" in self._forced_temperature_off:
+                current_nozzle = 0
+            if "target_hotbed_temp" in self._forced_temperature_off:
+                current_hotbed = 0
+
+            payload_data = {
+                "target_nozzle_temp": current_nozzle,
+                "target_hotbed_temp": current_hotbed,
+            }
+            payload_data[key] = requested
+
+            # Non-zero targets are more stable through tempature/set than
+            # print/update (which can emit transient stepped values).
+            self._publish_cloud_mqtt_command(
+                "tempature",
+                "set",
+                payload_data,
+                publish_to_slicer=True,
+            )
+            return
+
+        # Heater off: do not send print/update because some firmware clamps
+        # this path back to its minimum (e.g. 185 for nozzle).
+        if not self._selected_printer:
+            return
+
+        self._forced_temperature_off.add(key)
+        self._forced_temperature_off_last_publish.pop(key, None)
+
+        self._publish_cloud_mqtt_command(
+            "tempature",
+            "set",
+            {key: 0},
+            publish_to_slicer=True,
+        )
+
     async def async_query_topic(self, topic: str, action: str = "query") -> None:
         if not self._selected_printer:
             return
@@ -675,7 +831,7 @@ class CloudTransport(AnycubicTransport):
             return
 
         if self._api is not None and action == "query":
-            query_topics = ("fan", "light") if topic == "initial" else (topic,)
+            query_topics = ("fan", "light", "tempature") if topic == "initial" else (topic,)
             for query_topic in query_topics:
                 if query_topic not in {"fan", "light", "tempature", "print", "info"}:
                     continue
@@ -688,7 +844,7 @@ class CloudTransport(AnycubicTransport):
                 }
                 try:
                     self._api._mqtt_publish_to_printer(self._selected_printer, query_topic, payload)
-                    if query_topic in {"fan", "light"}:
+                    if query_topic in {"fan", "light", "tempature"}:
                         self._api._mqtt_publish_to_printer_slicer(self._selected_printer, query_topic, payload)
                 except Exception as err:
                     _LOGGER.debug("Cloud MQTT query publish failed for %s: %s", query_topic, err)

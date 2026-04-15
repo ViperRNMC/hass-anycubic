@@ -77,6 +77,9 @@ class AnycubicButton(CoordinatorEntity, ButtonEntity):
         elif self._type == "print":
             msg_type = "print"
             data = {"taskid": "-1"}
+        elif self._type == "temperature":
+            msg_type = "print"
+            data = self.definition.get("data", {})
         else:
             _LOGGER.debug("Unknown button type: %s", self._type)
             return

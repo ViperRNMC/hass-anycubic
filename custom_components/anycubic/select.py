@@ -36,6 +36,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class AnycubicSelect(CoordinatorEntity, SelectEntity):
     """Generic Select backed by SELECT_DEFINITIONS."""
 
+    _ACTIVE_PRINT_STATES = {"printing", "paused", "pausing", "resuming", "preheating"}
+
     def __init__(self, coordinator, definition: dict):
         super().__init__(coordinator)
         self.definition = definition
@@ -60,7 +62,14 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
                 return k
         return None
 
+    @property
+    def available(self) -> bool:
+        return super().available and self._is_print_active()
+
     async def async_select_option(self, option: str) -> None:
+        if not self._is_print_active():
+            _LOGGER.debug("Ignoring print_speed_mode change while no print is active")
+            return
         if option not in self._attr_options:
             _LOGGER.debug("Invalid option selected: %s", option)
             return
@@ -75,6 +84,11 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
             await self.coordinator.async_send_command("print", "setPrintSpeedMode", {"print_speed_mode": mapped})
         except Exception as err:  # pragma: no cover - defensive
             _LOGGER.debug("Failed to send print_speed_mode change: %s", err)
+
+    def _is_print_active(self) -> bool:
+        print_data = self.coordinator.data.get("print", {}).get("data", {})
+        state = str(print_data.get("state") or "").strip().lower()
+        return state in self._ACTIVE_PRINT_STATES
 
     def _get_effective_value_map(self, info: dict[str, Any]) -> dict[str, int]:
         """Prefer cloud-provided mode mapping; fall back to static defaults."""
