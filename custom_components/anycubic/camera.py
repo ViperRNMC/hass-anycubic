@@ -47,9 +47,36 @@ class AnycubicCamera(CoordinatorEntity, Camera):
 
     @property
     def available(self) -> bool:
-        return bool(self.coordinator.last_update_success)
+        if not self.coordinator.last_update_success:
+            return False
+        video_data = self._video_data()
+        reason = video_data.get("stream_reason")
+        if reason:
+            return False
+        return bool(video_data.get("stream_available", True))
+
+    @property
+    def supported_features(self) -> CameraEntityFeature:
+        video_data = self._video_data()
+        if not self.coordinator.last_update_success:
+            return CameraEntityFeature(0)
+        if video_data.get("stream_reason"):
+            return CameraEntityFeature(0)
+        if video_data.get("stream_available") is False:
+            return CameraEntityFeature(0)
+        return CameraEntityFeature.STREAM
+
+    def _video_data(self) -> dict[str, Any]:
+        video = self.coordinator.data.get("video", {}) if isinstance(self.coordinator.data, dict) else {}
+        data = video.get("data", {}) if isinstance(video, dict) else {}
+        return data if isinstance(data, dict) else {}
 
     async def _ensure_stream_source(self) -> str | None:
+        video_data = self._video_data()
+        if video_data.get("stream_reason"):
+            self._last_open_status = f"blocked:{video_data.get('stream_reason')}"
+            return None
+
         if self._stream_url:
             return self._stream_url
 
@@ -130,10 +157,13 @@ class AnycubicCamera(CoordinatorEntity, Camera):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        video_data = self._video_data()
         return {
             "stream_url": self._stream_url,
             "stream_status": self._last_open_status,
             "stream_open_attempts": self._open_attempt_count,
+            "stream_reason": video_data.get("stream_reason"),
+            "stream_available": video_data.get("stream_available"),
         }
 
     @property

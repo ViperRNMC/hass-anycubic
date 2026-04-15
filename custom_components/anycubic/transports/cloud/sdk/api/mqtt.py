@@ -16,6 +16,7 @@ from ..const.mqtt import (
     MQTT_ROOT_TOPIC_PLUS,
     MQTT_ROOT_TOPIC_PRINTER,
     MQTT_ROOT_TOPIC_PUBLISH_PRINTER,
+    MQTT_ROOT_TOPIC_PUBLISH_PRINTER_SLICER,
     MQTT_ROOT_TOPIC_SERVER,
     MQTT_TIMEOUT,
 )
@@ -120,6 +121,9 @@ class AnycubicMQTTAPI(AnycubicAPIFunctions):
 
     def _build_mqtt_printer_publish_topic(self, printer: AnycubicPrinter, endpoint: str) -> str:
         return f"{MQTT_ROOT_TOPIC_PUBLISH_PRINTER}{printer.machine_type}/{printer.key}/{endpoint}"
+
+    def _build_mqtt_printer_publish_slicer_topic(self, printer: AnycubicPrinter, endpoint: str) -> str:
+        return f"{MQTT_ROOT_TOPIC_PUBLISH_PRINTER_SLICER}{printer.machine_type}/{printer.key}/{endpoint}"
 
     def _build_mqtt_user_subscription(self) -> list[str]:
         user_id, user_id_md5 = self.anycubic_auth.get_user_id_md5_tuple()
@@ -236,6 +240,15 @@ class AnycubicMQTTAPI(AnycubicAPIFunctions):
         payload: dict[str, Any] | str,
     ) -> None:
         mqtt_topic = self._build_mqtt_printer_publish_topic(printer, endpoint)
+        self._mqtt_publish_on_topic(mqtt_topic, payload=payload)
+
+    def _mqtt_publish_to_printer_slicer(
+        self,
+        printer: AnycubicPrinter,
+        endpoint: str,
+        payload: dict[str, Any] | str,
+    ) -> None:
+        mqtt_topic = self._build_mqtt_printer_publish_slicer_topic(printer, endpoint)
         self._mqtt_publish_on_topic(mqtt_topic, payload=payload)
 
     def _mqtt_build_ssl_context(self) -> ssl.SSLContext:

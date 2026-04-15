@@ -102,20 +102,11 @@ class AnycubicFanEntity(CoordinatorEntity, FanEntity):
         ``data``. We assemble the payload using the current known values and
         override the targeted fan with the requested percentage.
         """
-        # Build a baseline using current coordinator values for each known
-        # fan data_key
-        fan_payload = self.coordinator.data.get("fan", {}).get("data", {}) or {}
-        fan_data = {}
-        for fdef in FAN_DEFINITIONS:
-            key = fdef.get("data_key")
-            value = fan_payload.get(key)
-            try:
-                fan_data[key] = int(value if value is not None else 0)
-            except (TypeError, ValueError):
-                fan_data[key] = 0
-
-        # Overwrite the requested fan value using this instance's data_key
-        fan_data[self._data_key] = int(percentage)
+        # Send only the targeted key. Sending all fan keys creates extra cloud
+        # orders and can trigger rate-limit/auth churn while dragging sliders.
+        fan_data = {
+            self._data_key: int(percentage),
+        }
 
         try:
             _LOGGER.debug("Publishing fan command via coordinator: %s", fan_data)

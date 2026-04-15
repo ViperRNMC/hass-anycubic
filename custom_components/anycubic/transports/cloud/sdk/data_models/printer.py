@@ -99,6 +99,7 @@ class AnycubicPrinter:
         "_fan_speed",
         "_aux_fan_speed_pct",
         "_box_fan_level",
+        "_lights_by_type",
         "_print_speed_pct",
         "_print_speed_mode",
         "_local_file_list",
@@ -205,6 +206,7 @@ class AnycubicPrinter:
         self._fan_speed: int = 0
         self._aux_fan_speed_pct: int | None = None
         self._box_fan_level: int | None = None
+        self._lights_by_type: dict[int, dict[str, int]] = {}
         self._print_speed_pct: int = 0
         self._print_speed_mode: int = 0
         self._local_file_list: list[AnycubicFile] | None = None
@@ -848,15 +850,7 @@ class AnycubicPrinter:
         """Handle light updates (camera/box light status reports)."""
         if action in ['query', 'auto'] and state in ['done', 'success']:
             data = payload.get('data', {})
-            # Currently we don't expose a cloud light state entity from this payload,
-            # but we consume known keys to avoid noisy unknown-update errors.
-            lights = data.get('lights')
-            if isinstance(lights, list):
-                for light in lights:
-                    if isinstance(light, dict):
-                        light.get('type')
-                        light.get('status')
-                        light.get('brightness')
+            self._update_light_cache_from_payload(data)
 
             # Consume all keys from the light payload to avoid unhandled warnings.
             data.force_empty()
@@ -867,9 +861,56 @@ class AnycubicPrinter:
             # as an unknown MQTT update.
             data = payload.get('data')
             if isinstance(data, AnycubicConsumableData):
+                self._update_light_cache_from_payload(data)
                 data.force_empty()
             return
         raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.unknown.format('light'))
+
+    def _update_light_cache_from_payload(self, data: Any) -> None:
+        if not isinstance(data, (dict, AnycubicConsumableData)):
+            return
+
+        lights = data.get('lights')
+        if isinstance(lights, list):
+            for light in lights:
+                self._update_single_light_cache(light)
+            return
+
+        # Newer cloud responses often provide a single light object directly
+        # under data (type/status/brightness) instead of a lights array.
+        self._update_single_light_cache(data)
+
+    def _update_single_light_cache(self, light: Any) -> None:
+        if not isinstance(light, (dict, AnycubicConsumableData)):
+            return
+
+        light_type_raw = light.get('type')
+        if light_type_raw is None:
+            return
+
+        try:
+            light_type = int(light_type_raw)
+        except (TypeError, ValueError):
+            return
+
+        status_raw = light.get('status')
+        brightness_raw = light.get('brightness')
+
+        try:
+            status = int(status_raw) if status_raw is not None else 0
+        except (TypeError, ValueError):
+            status = 0
+
+        try:
+            brightness = int(brightness_raw) if brightness_raw is not None else (100 if status == 1 else 0)
+        except (TypeError, ValueError):
+            brightness = 100 if status == 1 else 0
+
+        self._lights_by_type[light_type] = {
+            'type': light_type,
+            'status': 1 if status else 0,
+            'brightness': max(0, min(100, brightness)),
+        }
 
     def _process_mqtt_update_video(
         self,
@@ -2074,12 +2115,25 @@ class AnycubicPrinter:
         return None
 
     @property
+    def fan_speed_pct(self) -> int:
+        return self._fan_speed
+
+    @property
     def aux_fan_speed_pct(self) -> int | None:
         return self._aux_fan_speed_pct
 
     @property
     def box_fan_level(self) -> int | None:
         return self._box_fan_level
+
+    @property
+    def light_states_data_object(self) -> list[dict[str, int]]:
+        if not self._lights_by_type:
+            return []
+        return [
+            self._lights_by_type[key]
+            for key in sorted(self._lights_by_type.keys())
+        ]
 
     @property
     def latest_project_raw_print_status(self) -> int | None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -82,6 +84,7 @@ class CloudTransport(AnycubicTransport):
         self._reauth_started = False
         self._mqtt_auth_fingerprint: tuple[Any, ...] | None = None
         self._consecutive_periodic_auth_failures = 0
+        self._camera_stream_blocked_reason: str | None = None
 
     async def async_setup(self, on_data: Callable[[dict], None]) -> None:
         self._on_data = on_data
@@ -107,6 +110,9 @@ class CloudTransport(AnycubicTransport):
             mqtt_callback_disconnected=self._mqtt_callback_disconnected,
             mqtt_callback_connect_failed=self._mqtt_callback_connect_failed,
         )
+        # Troubleshooting mode: when this integration logger is on DEBUG,
+        # also emit raw MQTT publish/receive payloads.
+        self._api.set_mqtt_log_all_messages(_LOGGER.isEnabledFor(logging.DEBUG))
 
         auth_mode_raw = self._entry.data.get(CONF_USER_AUTH_MODE)
         configured_mode: AnycubicAuthMode | None = None
@@ -250,6 +256,7 @@ class CloudTransport(AnycubicTransport):
             p.latest_project_available_print_speed_modes_data_object
         )
         resolved_speed_mode = self._resolve_print_speed_mode(p)
+        resolved_fan_speed = self._resolve_fan_speed_pct(p)
 
         print_data = {
             "state": p.latest_project_print_status,
@@ -265,7 +272,7 @@ class CloudTransport(AnycubicTransport):
             "target_nozzle_temp": p.latest_project_target_nozzle_temp,
             "target_hotbed_temp": p.latest_project_target_hotbed_temp,
             "print_speed_mode": resolved_speed_mode,
-            "fan_speed_pct": p.latest_project_fan_speed_pct,
+            "fan_speed_pct": resolved_fan_speed,
             "source_info": {
                 "models": [{"name": p.latest_project_name}] if p.latest_project_name else []
             },
@@ -347,9 +354,23 @@ class CloudTransport(AnycubicTransport):
             "fan": {
                 "type": "fan",
                 "data": {
-                    "fan_speed_pct": p.latest_project_fan_speed_pct,
-                    "aux_fan_speed_pct": p.aux_fan_speed_pct,
-                    "box_fan_level": p.box_fan_level,
+                    "fan_speed_pct": resolved_fan_speed,
+                    "aux_fan_speed_pct": int(p.aux_fan_speed_pct or 0),
+                    "box_fan_level": int(p.box_fan_level or 0),
+                },
+            },
+            "light": {
+                "type": "light",
+                "data": {
+                    "lights": p.light_states_data_object,
+                },
+            },
+            "video": {
+                "type": "video",
+                "data": {
+                    "stream_available": bool(printer_ip) and not self._camera_stream_blocked_reason,
+                    "stream_reason": self._camera_stream_blocked_reason,
+                    "ip": printer_ip,
                 },
             },
             "multiColorBox": {
@@ -398,6 +419,41 @@ class CloudTransport(AnycubicTransport):
             return live_mode
 
         return project_mode
+
+    @staticmethod
+    def _resolve_fan_speed_pct(printer: Any) -> int | None:
+        """Resolve fan speed with preference for live fan telemetry when idle."""
+        live_fan_raw = getattr(printer, "fan_speed_pct", None)
+        live_fan: int | None = None
+        if live_fan_raw is not None:
+            try:
+                live_fan = int(live_fan_raw)
+            except (TypeError, ValueError):
+                live_fan = None
+
+        project_fan_raw = getattr(printer, "latest_project_fan_speed_pct", None)
+        project_fan: int | None = None
+        if project_fan_raw is not None:
+            try:
+                project_fan = int(project_fan_raw)
+            except (TypeError, ValueError):
+                project_fan = None
+
+        project_state = str(getattr(printer, "latest_project_print_status", "") or "").strip().lower()
+        is_actively_printing = project_state in {
+            "printing",
+            "paused",
+            "pausing",
+            "resuming",
+        }
+
+        if is_actively_printing and project_fan is not None:
+            return project_fan
+
+        if live_fan is not None:
+            return live_fan
+
+        return project_fan
 
     @classmethod
     def _build_print_speed_mode_map(cls, mode_data: Any) -> dict[str, int]:
@@ -450,7 +506,7 @@ class CloudTransport(AnycubicTransport):
                 await self.async_open_camera_stream()
                 return
             if action == "stopCapture":
-                _LOGGER.debug("Cloud video stopCapture requested; close order is not implemented by SDK yet")
+                self._publish_cloud_mqtt_command("video", "stopCapture")
                 return
 
         if msg_type == "print":
@@ -473,17 +529,22 @@ class CloudTransport(AnycubicTransport):
                 await printer.change_print_setting_target_hotbed_temp(int(data.get("target_hotbed_temp", 0)))
                 return
             if action == "setFanSpeed" and isinstance(data, dict):
-                await printer.change_print_setting_fan_speed_pct(int(data.get("fan_speed_pct", 0)))
+                await self._send_cloud_fan_command({"fan_speed_pct": int(data.get("fan_speed_pct", 0))})
                 return
             if action == "setAuxFanSpeed" and isinstance(data, dict):
-                await printer.change_print_setting_aux_fan_speed_pct(int(data.get("aux_fan_speed_pct", 0)))
+                await self._send_cloud_fan_command({"aux_fan_speed_pct": int(data.get("aux_fan_speed_pct", 0))})
                 return
 
         if msg_type == "fan" and action == "auto" and isinstance(data, dict):
+            fan_data: dict[str, int] = {}
             if "fan_speed_pct" in data:
-                await printer.change_print_setting_fan_speed_pct(int(data.get("fan_speed_pct", 0)))
+                fan_data["fan_speed_pct"] = int(data.get("fan_speed_pct", 0))
             if "aux_fan_speed_pct" in data:
-                await printer.change_print_setting_aux_fan_speed_pct(int(data.get("aux_fan_speed_pct", 0)))
+                fan_data["aux_fan_speed_pct"] = int(data.get("aux_fan_speed_pct", 0))
+            if "box_fan_level" in data:
+                fan_data["box_fan_level"] = int(data.get("box_fan_level", 0))
+            if fan_data:
+                await self._send_cloud_fan_command(fan_data)
             return
 
         if msg_type == "light" and action == "control" and isinstance(data, dict):
@@ -529,11 +590,109 @@ class CloudTransport(AnycubicTransport):
 
         _LOGGER.debug("Cloud command not mapped yet: %s/%s (%s)", msg_type, action, data)
 
+    def _publish_cloud_mqtt_command(self, endpoint: str, action: str, data: Any = None) -> bool:
+        if not self._selected_printer or self._api is None or not self._api.mqtt_is_started:
+            return False
+
+        payload: dict[str, Any] = {
+            "type": endpoint,
+            "action": action,
+            "timestamp": int(time.time() * 1000),
+            "msgid": str(uuid.uuid4()),
+            "data": data,
+        }
+        try:
+            self._api._mqtt_publish_to_printer(self._selected_printer, endpoint, payload)
+            return True
+        except Exception as err:
+            _LOGGER.debug("Cloud MQTT publish failed for %s/%s: %s", endpoint, action, err)
+            return False
+
+    async def _send_cloud_fan_command(self, fan_data: dict[str, int]) -> None:
+        """Send fan changes over cloud MQTT."""
+        if not self._selected_printer or self._api is None or not self._api.mqtt_is_started:
+            return
+
+        printer = self._selected_printer
+        project_id = getattr(getattr(printer, "latest_project", None), "id", None)
+        taskid = str(project_id) if project_id is not None else "-1"
+
+        def _publish(endpoint: str, payload: dict[str, Any]) -> None:
+            # Both topics required; firmware ignores commands on printer/public alone.
+            self._api._mqtt_publish_to_printer(printer, endpoint, payload)
+            self._api._mqtt_publish_to_printer_slicer(printer, endpoint, payload)
+
+        # box_fan_level and aux_fan_speed_pct are print settings: they need a
+        # print/update command to physically activate, plus fan/auto for state report.
+        _keys = set(fan_data.keys())
+        if _keys in ({"box_fan_level"}, {"aux_fan_speed_pct"}):
+            fan_key, fan_val = next(iter(fan_data.items()))
+            _publish("print", {
+                "type": "print",
+                "action": "update",
+                "timestamp": int(time.time() * 1000),
+                "msgid": str(uuid.uuid4()),
+                "data": {"taskid": taskid, "settings": {fan_key: int(fan_val)}},
+            })
+            _publish("fan", {
+                "type": "fan",
+                "action": "auto",
+                "timestamp": int(time.time() * 1000),
+                "msgid": str(uuid.uuid4()),
+                "data": {fan_key: int(fan_val)},
+            })
+            return
+
+        # fan_speed_pct (and multi-key): merge requested keys into current printer state.
+        fan_payload: dict[str, Any] = {
+            "fan_speed_pct": int(getattr(printer, "fan_speed_pct", 0) or 0),
+            "aux_fan_speed_pct": int(getattr(printer, "aux_fan_speed_pct", 0) or 0),
+            "box_fan_level": int(getattr(printer, "box_fan_level", 0) or 0),
+            "taskid": taskid,
+        }
+        for key, value in fan_data.items():
+            if key in fan_payload:
+                fan_payload[key] = int(value)
+
+        for action in ("setSpeed", "auto"):
+            _publish("fan", {
+                "type": "fan",
+                "action": action,
+                "timestamp": int(time.time() * 1000),
+                "msgid": str(uuid.uuid4()),
+                "data": fan_payload,
+            })
+
     async def async_query_topic(self, topic: str, action: str = "query") -> None:
         if not self._selected_printer:
             return
         if topic == "video" and action in ("startCapture", "query"):
             await self.async_open_camera_stream()
+            return
+        if topic == "video" and action == "stopCapture":
+            self._publish_cloud_mqtt_command("video", "stopCapture")
+            self._emit_normalized_snapshot()
+            return
+
+        if self._api is not None and action == "query":
+            query_topics = ("fan", "light") if topic == "initial" else (topic,)
+            for query_topic in query_topics:
+                if query_topic not in {"fan", "light", "tempature", "print", "info"}:
+                    continue
+                payload = {
+                    "type": query_topic,
+                    "action": "query",
+                    "timestamp": int(time.time() * 1000),
+                    "msgid": str(uuid.uuid4()),
+                    "data": None,
+                }
+                try:
+                    self._api._mqtt_publish_to_printer(self._selected_printer, query_topic, payload)
+                    if query_topic in {"fan", "light"}:
+                        self._api._mqtt_publish_to_printer_slicer(self._selected_printer, query_topic, payload)
+                except Exception as err:
+                    _LOGGER.debug("Cloud MQTT query publish failed for %s: %s", query_topic, err)
+
         try:
             await self._selected_printer.update_info_from_api(with_project=True)
         except Exception as err:
@@ -541,14 +700,14 @@ class CloudTransport(AnycubicTransport):
         self._emit_normalized_snapshot()
 
     async def async_open_camera_stream(self) -> str | None:
-        """Request cloud camera start and return an HTTP-FLV URL when possible."""
+        """Request cloud camera start (MQTT) and return an HTTP-FLV URL when possible."""
         if not self._selected_printer or self._api is None:
             return None
 
-        try:
-            await self._api._send_anycubic_camera_open_order(self._selected_printer)
-        except Exception as err:
-            _LOGGER.debug("Cloud camera open order failed: %s", err)
+        # Slicer controls camera via MQTT startCapture/stopCapture, so prefer
+        # that path over cloud API open-order responses.
+        self._camera_stream_blocked_reason = None
+        self._publish_cloud_mqtt_command("video", "startCapture")
 
         try:
             # Keep project context intact; commands like light/fan rely on it.
@@ -562,7 +721,11 @@ class CloudTransport(AnycubicTransport):
             or getattr(self._selected_printer, "local_ip", None)
         )
         if not printer_ip:
+            if not self._camera_stream_blocked_reason:
+                self._camera_stream_blocked_reason = "No local stream IP available from cloud"
             return None
+        if not self._camera_stream_blocked_reason:
+            self._camera_stream_blocked_reason = None
         return f"http://{printer_ip}:18088/flv"
 
     async def async_refresh_credentials(self) -> None:

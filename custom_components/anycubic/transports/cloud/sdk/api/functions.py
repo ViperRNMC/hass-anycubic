@@ -396,8 +396,20 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
     ) -> str | None | dict[str, Any]:
         params = order_request.order_request_data
 
-        for attempt in range(2):
-            resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.send_order, params=params)
+        for attempt in range(3):
+            try:
+                resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.send_order, params=params)
+            except AnycubicAPIParsingError:
+                # Cloud occasionally responds with non-JSON during token rollover or throttling.
+                if attempt < 2:
+                    try:
+                        await self.check_api_tokens()
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.8)
+                    continue
+                raise
+
             error_message = resp.get('msg') if resp is not None else None
             error_message_text = str(error_message or '').strip().lower()
             error_code = int(resp.get('code', -1)) if isinstance(resp, dict) else -1
@@ -414,6 +426,16 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
                     refreshed = False
                 if refreshed:
                     continue
+
+            # Retry on Anycubic's temporary anti-spam/rate-limit responses.
+            is_rate_limited = (
+                'too frequent' in error_message_text
+                or 'too many requests' in error_message_text
+                or '请求过于频繁' in str(error_message or '')
+            )
+            if attempt < 2 and is_rate_limited:
+                await asyncio.sleep(1.0)
+                continue
 
             if raw_data:
                 return resp
@@ -680,40 +702,59 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
         if project is not None:
             project.validate_new_print_settings(print_settings)
 
+        settings_data = print_settings.settings_data
         order_data = {
-            'settings': print_settings.settings_data
+            'settings': settings_data
         }
 
-        primary_project_id = int(project.id) if project is not None else 0
+        # Fan-only updates are firmware-dependent: some printers want project_id=0,
+        # others only accept a live task id. Try a small set of candidates.
+        fan_keys = {'fan_speed_pct', 'aux_fan_speed_pct', 'box_fan_level'}
+        is_fan_only_update = bool(settings_data) and set(settings_data.keys()).issubset(fan_keys)
 
-        try:
-            return await self._send_anycubic_order(
-                order_request=AnycubicProjectOrderRequest(
-                    order_id=AnycubicOrderID.PRINT_SETTINGS,
-                    printer_id=printer.id,
-                    project_id=primary_project_id,
-                    order_data=order_data,
-                ),
-            )
-        except AnycubicAPIError as err:
-            # Some printers reject stale/finished task ids with
-            # "Print task does not exist" or "project does not exist";
-            # retry against project_id=0.
-            err_text = str(err).lower()
-            is_project_missing = (
-                "print task does not exist" in err_text
-                or "project does not exist" in err_text
-            )
-            if not is_project_missing or primary_project_id == 0:
-                raise
-            return await self._send_anycubic_order(
-                order_request=AnycubicProjectOrderRequest(
-                    order_id=AnycubicOrderID.PRINT_SETTINGS,
-                    printer_id=printer.id,
-                    project_id=0,
-                    order_data=order_data,
-                ),
-            )
+        project_candidates: list[int] = []
+        if project is not None:
+            project_candidates.append(int(project.id))
+        if is_fan_only_update:
+            project_candidates.extend([0, -1])
+        else:
+            project_candidates.append(0)
+
+        # Keep candidate order and remove duplicates.
+        ordered_candidates: list[int] = []
+        seen: set[int] = set()
+        for candidate in project_candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            ordered_candidates.append(candidate)
+
+        last_error: Exception | None = None
+        for project_id in ordered_candidates:
+            try:
+                return await self._send_anycubic_order(
+                    order_request=AnycubicProjectOrderRequest(
+                        order_id=AnycubicOrderID.PRINT_SETTINGS,
+                        printer_id=printer.id,
+                        project_id=project_id,
+                        order_data=order_data,
+                    ),
+                )
+            except AnycubicAPIError as err:
+                last_error = err
+                err_text = str(err).lower()
+                is_project_missing = (
+                    "print task does not exist" in err_text
+                    or "project does not exist" in err_text
+                    or "项目不存在" in err_text
+                )
+                if not is_project_missing:
+                    raise
+                continue
+
+        if last_error is not None:
+            raise last_error
+        return None
 
     async def _send_order_list_local_files(
         self,

@@ -63,6 +63,10 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
             return data
         return {}
 
+    def _has_light_data(self) -> bool:
+        """Return True once the transport has received a real light payload."""
+        return bool(self._find_light_data())
+
     def _is_light_control_locked(self) -> bool:
         """Return True when cloud reports light control lock (e.g. AI detection)."""
         light = self.coordinator.data.get("light", {}) or {}
@@ -71,7 +75,7 @@ class AnycubicLightEntity(CoordinatorEntity, LightEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and not self._is_light_control_locked()
+        return super().available and self._has_light_data() and not self._is_light_control_locked()
 
     @property
     def is_on(self) -> bool:
