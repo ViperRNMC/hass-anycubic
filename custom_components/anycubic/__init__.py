@@ -6,26 +6,12 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONNECTION_MODE_CLOUD, CONNECTION_MODE_LAN, CONF_CONNECTION_MODE, DOMAIN
+from .const import DOMAIN
 from .coordinator import async_create_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS_LAN = [
-    "sensor",
-    "update",
-    "image",
-    "switch",
-    "select",
-    "button",
-    "fan",
-    "light",
-    "number",
-    "binary_sensor",
-    "camera",
-]
-
-PLATFORMS_CLOUD = [
+PLATFORMS = [
     "sensor",
     "update",
     "image",
@@ -47,9 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = await async_create_coordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
-    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN
-    await hass.config_entries.async_forward_entry_setups(entry, platforms)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
@@ -62,7 +46,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.debug("Coordinator shutdown failed during unload", exc_info=True)
 
-    mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
-    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     return unload_ok

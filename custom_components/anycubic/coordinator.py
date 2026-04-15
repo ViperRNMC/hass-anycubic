@@ -303,5 +303,3 @@ async def async_create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> A
     return coordinator
 
 
-# Backward-compatible class name used in some platform modules.
-AnycubicDataUpdateCoordinator = AnycubicCoordinator

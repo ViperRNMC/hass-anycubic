@@ -396,24 +396,42 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
     ) -> str | None | dict[str, Any]:
         params = order_request.order_request_data
 
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.send_order, params=params)
-        if raw_data:
-            return resp
+        for attempt in range(2):
+            resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.send_order, params=params)
+            error_message = resp.get('msg') if resp is not None else None
+            error_message_text = str(error_message or '').strip().lower()
+            error_code = int(resp.get('code', -1)) if isinstance(resp, dict) else -1
 
-        error_message = resp.get('msg') if resp is not None else None
+            # Retry once after refreshing auth when cloud returns expired-login.
+            is_expired_login = (
+                error_code == 10001
+                or 'login information has expired' in error_message_text
+            )
+            if attempt == 0 and is_expired_login:
+                try:
+                    refreshed = await self.check_api_tokens()
+                except Exception:
+                    refreshed = False
+                if refreshed:
+                    continue
 
-        if resp is None or resp.get('data') is None:
-            if resp is not None and resp.get('data') is None and error_message == AnycubicServerMessage.FILE_NOT_FOUND:
+            if raw_data:
+                return resp
+
+            if resp is not None and resp.get('data') is not None:
+                data: str | None = resp['data'].get('msgid')
+
+                if data is None:
+                    self._log_to_error(f"Empty reply when sending order to Anycubic Cloud, message: {error_message}")
+
+                return data
+
+            if error_message == AnycubicServerMessage.FILE_NOT_FOUND:
                 raise AnycubicFileNotFoundError(ErrorsFileNotFound.in_cloud)
-            else:
-                raise AnycubicAPIError(ErrorsGeneral.send_order_fail.format(error_message))
 
-        data: str | None = resp['data'].get('msgid')
+            raise AnycubicAPIError(ErrorsGeneral.send_order_fail.format(error_message))
 
-        if data is None:
-            self._log_to_error(f"Empty reply when sending order to Anycubic Cloud, message: {error_message}")
-
-        return data
+        return None
 
     async def _send_order_multi_color_box_set_slot(
         self,
@@ -656,28 +674,46 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
         if not printer:
             return None
 
-        if not project and not printer.latest_project:
-            return None
-
-        if not project:
+        if project is None:
             project = printer.latest_project
 
-        assert project
-
-        project.validate_new_print_settings(print_settings)
+        if project is not None:
+            project.validate_new_print_settings(print_settings)
 
         order_data = {
             'settings': print_settings.settings_data
         }
 
-        return await self._send_anycubic_order(
-            order_request=AnycubicProjectOrderRequest(
-                order_id=AnycubicOrderID.PRINT_SETTINGS,
-                printer_id=printer.id,
-                project_id=project.id,
-                order_data=order_data,
-            ),
-        )
+        primary_project_id = int(project.id) if project is not None else 0
+
+        try:
+            return await self._send_anycubic_order(
+                order_request=AnycubicProjectOrderRequest(
+                    order_id=AnycubicOrderID.PRINT_SETTINGS,
+                    printer_id=printer.id,
+                    project_id=primary_project_id,
+                    order_data=order_data,
+                ),
+            )
+        except AnycubicAPIError as err:
+            # Some printers reject stale/finished task ids with
+            # "Print task does not exist" or "project does not exist";
+            # retry against project_id=0.
+            err_text = str(err).lower()
+            is_project_missing = (
+                "print task does not exist" in err_text
+                or "project does not exist" in err_text
+            )
+            if not is_project_missing or primary_project_id == 0:
+                raise
+            return await self._send_anycubic_order(
+                order_request=AnycubicProjectOrderRequest(
+                    order_id=AnycubicOrderID.PRINT_SETTINGS,
+                    printer_id=printer.id,
+                    project_id=0,
+                    order_data=order_data,
+                ),
+            )
 
     async def _send_order_list_local_files(
         self,
@@ -816,10 +852,7 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
             order_id=int(AnycubicOrderID.CAMERA_OPEN),
             printer_id=printer.id,
         )
-        resp = await self._fetch_api_resp(
-            endpoint=API_ENDPOINT.send_order,
-            params=order_request.order_request_data
-        )
+        resp = await self._send_anycubic_order(order_request=order_request, raw_data=True)
         if raw_data:
             return resp
 
@@ -867,14 +900,11 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
     async def _send_order_set_light_status(
         self,
         printer: AnycubicPrinter,
-        project: AnycubicProject,
+        project: AnycubicProject | None,
         light_on: bool,
         light_type: int = 1,
     ) -> str | None:
         if not printer:
-            return None
-
-        if not project:
             return None
 
         order_data = {
@@ -883,11 +913,13 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
             'brightness': 100 if light_on else 0,
         }
 
+        project_id = int(project.id) if project is not None else 0
+
         return await self._send_anycubic_order(
             order_request=AnycubicProjectOrderRequest(
                 order_id=AnycubicOrderID.SET_LIGHT_STATUS,
                 printer_id=printer.id,
-                project_id=project.id,
+                project_id=project_id,
                 order_data=order_data,
             ),
         )

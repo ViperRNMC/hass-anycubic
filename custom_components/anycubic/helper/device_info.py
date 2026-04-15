@@ -31,7 +31,7 @@ def build_main_device_info(coordinator) -> dict[str, Any]:
     if not printer_name:
         model_text = str(model).strip() if model is not None else ""
         if model_text.lower().startswith(MANUFACTURER.lower()):
-            printer_name = model_text
+            printer_name = model_text[len(MANUFACTURER):].strip() or model_text
         else:
             printer_name = f"{MANUFACTURER} {model_text}".strip()
     sw_version = (

@@ -26,6 +26,16 @@ AUTH_MODE_LABELS: dict[AnycubicAuthMode, str] = {
 }
 
 
+def _normalize_credential(value: Any) -> str:
+    """Normalize user-supplied credential text from config flow inputs."""
+    if value is None:
+        return ""
+    normalized = str(value).strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"\"", "'"}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
+
 class CloudTransport(AnycubicTransport):
     """Cloud transport that normalizes cloud printer state to coordinator format."""
 
@@ -81,9 +91,11 @@ class CloudTransport(AnycubicTransport):
         await self.async_query_topic("initial")
 
     async def _setup_api(self) -> None:
-        token = self._entry.data.get(CONF_USER_TOKEN)
+        token = _normalize_credential(self._entry.data.get(CONF_USER_TOKEN))
         if not token:
             raise ValueError("Cloud mode requires user_token")
+
+        normalized_device_id = _normalize_credential(self._entry.data.get(CONF_USER_DEVICE_ID))
 
         cookie_jar = CookieJar(unsafe=True)
         websession = async_create_clientsession(self._hass, cookie_jar=cookie_jar)
@@ -122,24 +134,43 @@ class CloudTransport(AnycubicTransport):
         success = False
         selected_mode: AnycubicAuthMode | None = None
         for mode in mode_candidates:
-            self._api.set_authentication(
-                auth_token=token,
-                auth_mode=mode,
-                device_id=self._entry.data.get(CONF_USER_DEVICE_ID),
-            )
-            try:
-                if await self._api.check_api_tokens():
-                    success = True
-                    selected_mode = mode
-                    break
-            except Exception as err:
-                _LOGGER.debug("Cloud auth attempt failed for mode %s: %s", mode, err)
+            auto_pick_variants = [True]
+            if mode == AnycubicAuthMode.SLICER:
+                # Some users provide a direct XX-Token while selecting slicer mode.
+                # Try both access-token exchange and direct-token variants.
+                auto_pick_variants = [True, False]
+
+            for auto_pick_token in auto_pick_variants:
+                self._api.set_authentication(
+                    auth_token=token,
+                    auth_mode=mode,
+                    device_id=normalized_device_id,
+                    auto_pick_token=auto_pick_token,
+                )
+                try:
+                    if await self._api.check_api_tokens():
+                        success = True
+                        selected_mode = mode
+                        break
+                except Exception as err:
+                    variant = "access_token" if auto_pick_token else "direct_token"
+                    _LOGGER.debug("Cloud auth attempt failed for mode %s (%s): %s", mode, variant, err)
+
+            if success:
+                break
 
         if not success:
             raise ValueError("Cloud auth failed")
 
+        updates: dict[str, Any] = {}
         if selected_mode is not None and self._entry.data.get(CONF_USER_AUTH_MODE) != selected_mode.name.lower():
-            self._update_entry_data({CONF_USER_AUTH_MODE: selected_mode.name.lower()})
+            updates[CONF_USER_AUTH_MODE] = selected_mode.name.lower()
+        if token != self._entry.data.get(CONF_USER_TOKEN):
+            updates[CONF_USER_TOKEN] = token
+        if normalized_device_id != self._entry.data.get(CONF_USER_DEVICE_ID, ""):
+            updates[CONF_USER_DEVICE_ID] = normalized_device_id
+        if updates:
+            self._update_entry_data(updates)
 
         mode_label = AUTH_MODE_LABELS.get(selected_mode, str(selected_mode).lower() if selected_mode is not None else "unknown")
         mode_value = int(selected_mode) if selected_mode is not None else "unknown"
@@ -466,9 +497,6 @@ class CloudTransport(AnycubicTransport):
                         project = getattr(printer, "latest_project", None)
                     except Exception as err:
                         _LOGGER.debug("Cloud light: failed to refresh project before command: %s", err)
-                if project is None:
-                    _LOGGER.debug("Cloud light: skipping command because project context is unavailable")
-                    return
                 await self._api._send_order_set_light_status(
                     printer=printer,
                     project=project,
@@ -523,7 +551,8 @@ class CloudTransport(AnycubicTransport):
             _LOGGER.debug("Cloud camera open order failed: %s", err)
 
         try:
-            await self._selected_printer.update_info_from_api(with_project=False)
+            # Keep project context intact; commands like light/fan rely on it.
+            await self._selected_printer.update_info_from_api(with_project=True)
         except Exception as err:
             _LOGGER.debug("Cloud camera open refresh failed: %s", err)
 

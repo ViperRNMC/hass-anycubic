@@ -49,13 +49,13 @@ FILAMENT_DENSITY_G_CM3 = 1.24
 
 # Base device info pieces to be composed with per-device identifiers
 ACE_PRO_DEVICE_BASE = {
-    "name": "Anycubic Ace Pro",
+    "name": "Ace Pro",
     "manufacturer": MANUFACTURER,
     "model": "Ace Pro",
 }
 
 EXTFILBOX_DEVICE_BASE = {
-    "name": "Anycubic External Filament Rack",
+    "name": "External Filament Rack",
     "manufacturer": MANUFACTURER,
     "model": "External Filament Rack",
 }

@@ -142,6 +142,25 @@ class AnycubicSwitch(CoordinatorEntity, SwitchEntity):
         if "duration" in kwargs:
             params["duration"] = kwargs.get("duration")
 
+        key = self.definition.get("key")
+        if key and "drying" in key:
+            box = self._find_box() or {}
+            drying_status = box.get("drying_status") or {}
+
+            if params.get("target_temp") is None:
+                target_temp = drying_status.get("target_temp")
+                try:
+                    params["target_temp"] = int(target_temp)
+                except (TypeError, ValueError):
+                    params["target_temp"] = 35
+
+            if params.get("duration") is None:
+                duration = drying_status.get("duration")
+                try:
+                    params["duration"] = int(duration)
+                except (TypeError, ValueError):
+                    params["duration"] = 1
+
         data_template = self.definition.get("data_template_on") or {}
         data = self._render_template(data_template, **params)
         action = self.definition.get("action_on")
