@@ -57,6 +57,14 @@ class AnycubicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("query_topic failed (%s): %s", topic, err)
             return False
 
+    async def async_open_camera_stream(self) -> str | None:
+        """Ask the active transport to start camera streaming and return a URL."""
+        try:
+            return await self._transport.async_open_camera_stream()
+        except Exception as err:
+            _LOGGER.debug("open_camera_stream failed: %s", err)
+            return None
+
     def get_boxes(self) -> list[dict]:
         return self.data.get(MULTI_COLOR_BOX_KEY, {}).get("data", {}).get("multi_color_box", [])
 

@@ -823,14 +823,26 @@ class AnycubicAPIFunctions(AnycubicAPIBase):
         if raw_data:
             return resp
 
-        data = resp['data']
+        if not isinstance(resp, dict):
+            self._log_to_debug(f"Camera open order returned non-dict response: {resp}")
+            return None
+
+        data = resp.get('data')
+        if not isinstance(data, dict):
+            self._log_to_debug(f"Camera open order returned empty data: {resp}")
+            return None
+
+        token_data = data.get('token')
+        if not isinstance(token_data, dict):
+            self._log_to_debug(f"Camera open order missing token data: {resp}")
+            return None
 
         token = AnycubicCameraToken(
-            secret_id=data['token']['tmpSecretId'],
-            secret_key=data['token']['tmpSecretKey'],
-            session_token=data['token']['sessionToken'],
-            region=data['token']['region'],
-            msg_id=data['msgid'],
+            secret_id=token_data.get('tmpSecretId', ''),
+            secret_key=token_data.get('tmpSecretKey', ''),
+            session_token=token_data.get('sessionToken', ''),
+            region=token_data.get('region', ''),
+            msg_id=str(data.get('msgid', '')),
         )
         return token
 

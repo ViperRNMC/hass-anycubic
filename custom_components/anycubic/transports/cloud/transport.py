@@ -295,6 +295,14 @@ class CloudTransport(AnycubicTransport):
             return
         printer = self._selected_printer
 
+        if msg_type == "video":
+            if action in ("startCapture", "query"):
+                await self.async_open_camera_stream()
+                return
+            if action == "stopCapture":
+                _LOGGER.debug("Cloud video stopCapture requested; close order is not implemented by SDK yet")
+                return
+
         if msg_type == "print":
             if action == "pause":
                 await printer.pause_print()
@@ -377,11 +385,37 @@ class CloudTransport(AnycubicTransport):
     async def async_query_topic(self, topic: str, action: str = "query") -> None:
         if not self._selected_printer:
             return
+        if topic == "video" and action in ("startCapture", "query"):
+            await self.async_open_camera_stream()
         try:
             await self._selected_printer.update_info_from_api(with_project=True)
         except Exception as err:
             _LOGGER.debug("Cloud query refresh failed: %s", err)
         self._emit_normalized_snapshot()
+
+    async def async_open_camera_stream(self) -> str | None:
+        """Request cloud camera start and return an HTTP-FLV URL when possible."""
+        if not self._selected_printer or self._api is None:
+            return None
+
+        try:
+            await self._api._send_anycubic_camera_open_order(self._selected_printer)
+        except Exception as err:
+            _LOGGER.debug("Cloud camera open order failed: %s", err)
+
+        try:
+            await self._selected_printer.update_info_from_api(with_project=False)
+        except Exception as err:
+            _LOGGER.debug("Cloud camera open refresh failed: %s", err)
+
+        printer_ip = (
+            getattr(self._selected_printer, "ip", None)
+            or getattr(self._selected_printer, "ip_address", None)
+            or getattr(self._selected_printer, "local_ip", None)
+        )
+        if not printer_ip:
+            return None
+        return f"http://{printer_ip}:18088/flv"
 
     async def async_refresh_credentials(self) -> None:
         await self._async_auth_health_check("periodic_refresh")
