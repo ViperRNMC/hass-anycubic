@@ -31,12 +31,33 @@ class CloudTransport(AnycubicTransport):
 
     _PERIODIC_REAUTH_FAILURE_THRESHOLD = 3
 
-    _SPEED_OPTION_ALIASES: dict[str, str] = {
-        "silent": "silent",
-        "quiet": "silent",
-        "standard": "standard",
-        "normal": "standard",
-        "sport": "sport",
+    _SPEED_OPTION_ALIASES: dict[str, tuple[str, ...]] = {
+        "silent": (
+            "silent",
+            "quiet",
+            "still",
+            "stil",
+            "stille",
+            "stumm",
+            "静音",
+        ),
+        "standard": (
+            "standard",
+            "normal",
+            "default",
+            "std",
+            "standaard",
+            "标准",
+        ),
+        "sport": (
+            "sport",
+            "fast",
+            "speed",
+            "performance",
+            "high",
+            "turbo",
+            "运动",
+        ),
     }
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -197,6 +218,7 @@ class CloudTransport(AnycubicTransport):
         dynamic_speed_map = self._build_print_speed_mode_map(
             p.latest_project_available_print_speed_modes_data_object
         )
+        resolved_speed_mode = self._resolve_print_speed_mode(p)
 
         print_data = {
             "state": p.latest_project_print_status,
@@ -211,7 +233,7 @@ class CloudTransport(AnycubicTransport):
             "total_layers": p.latest_project_print_total_layers,
             "target_nozzle_temp": p.latest_project_target_nozzle_temp,
             "target_hotbed_temp": p.latest_project_target_hotbed_temp,
-            "print_speed_mode": p.latest_project_print_speed_mode,
+            "print_speed_mode": resolved_speed_mode,
             "fan_speed_pct": p.latest_project_fan_speed_pct,
             "source_info": {
                 "models": [{"name": p.latest_project_name}] if p.latest_project_name else []
@@ -279,7 +301,7 @@ class CloudTransport(AnycubicTransport):
                         "state": p.latest_project_print_status,
                         "progress": p.latest_project_progress_percentage,
                     },
-                    "print_speed_mode": p.latest_project_print_speed_mode,
+                    "print_speed_mode": resolved_speed_mode,
                     "print_speed_mode_map": dynamic_speed_map,
                 },
             },
@@ -306,6 +328,46 @@ class CloudTransport(AnycubicTransport):
         }
         self._on_data(normalized)
 
+    @staticmethod
+    def _resolve_print_speed_mode(printer: Any) -> int | None:
+        """Resolve speed mode with preference for live printer setting when idle.
+
+        `latest_project_print_speed_mode` can reflect the last job profile and may be
+        stale at startup. When not actively printing, prefer the printer-level speed
+        setting updated by print settings events.
+        """
+        live_mode_raw = getattr(printer, "_print_speed_mode", None)
+        live_mode: int | None = None
+        if live_mode_raw is not None:
+            try:
+                live_mode = int(live_mode_raw)
+            except (TypeError, ValueError):
+                live_mode = None
+
+        project_mode_raw = getattr(printer, "latest_project_print_speed_mode", None)
+        project_mode: int | None = None
+        if project_mode_raw is not None:
+            try:
+                project_mode = int(project_mode_raw)
+            except (TypeError, ValueError):
+                project_mode = None
+
+        project_state = str(getattr(printer, "latest_project_print_status", "") or "").strip().lower()
+        is_actively_printing = project_state in {
+            "printing",
+            "paused",
+            "pausing",
+            "resuming",
+        }
+
+        if is_actively_printing and project_mode is not None:
+            return project_mode
+
+        if live_mode is not None:
+            return live_mode
+
+        return project_mode
+
     @classmethod
     def _build_print_speed_mode_map(cls, mode_data: Any) -> dict[str, int]:
         """Build a stable option->mode map from cloud-provided speed mode metadata."""
@@ -327,12 +389,25 @@ class CloudTransport(AnycubicTransport):
             except (TypeError, ValueError):
                 continue
 
-            canonical = cls._SPEED_OPTION_ALIASES.get(description)
+            canonical = cls._canonical_speed_option(description)
             if canonical is None:
                 continue
             result[canonical] = mode_int
 
         return result
+
+    @classmethod
+    def _canonical_speed_option(cls, description: str) -> str | None:
+        """Map a descriptive speed label to one of silent/standard/sport."""
+        normalized = " ".join(description.replace("_", " ").replace("-", " ").split())
+        if not normalized:
+            return None
+
+        for canonical, keywords in cls._SPEED_OPTION_ALIASES.items():
+            if any(keyword in normalized for keyword in keywords):
+                return canonical
+
+        return None
 
     async def async_send_command(self, msg_type: str, action: str, data: Any = None) -> None:
         if not self._selected_printer:

@@ -78,20 +78,24 @@ class AnycubicSelect(CoordinatorEntity, SelectEntity):
 
     def _get_effective_value_map(self, info: dict[str, Any]) -> dict[str, int]:
         """Prefer cloud-provided mode mapping; fall back to static defaults."""
+        effective_map: dict[str, int] = {}
+        for k, v in self._value_map.items():
+            try:
+                effective_map[k] = int(v)
+            except (TypeError, ValueError):
+                continue
+
         cloud_map = info.get("print_speed_mode_map")
         if isinstance(cloud_map, dict):
-            dynamic_map: dict[str, int] = {}
             for option in self._attr_options:
                 if option not in cloud_map:
                     continue
                 try:
-                    dynamic_map[option] = int(cloud_map[option])
+                    effective_map[option] = int(cloud_map[option])
                 except (TypeError, ValueError):
                     continue
-            if dynamic_map:
-                return dynamic_map
 
-        return {k: int(v) for k, v in self._value_map.items()}
+        return effective_map
 
     @property
     def device_info(self) -> dict:
