@@ -861,6 +861,14 @@ class AnycubicPrinter:
             # Consume all keys from the light payload to avoid unhandled warnings.
             data.force_empty()
             return
+        if action == 'control' and state in ['done', 'success', 'failed', 'error']:
+            # Known command result path. When AI detection is active the firmware
+            # responds with state=failed and code=11808; this should not be treated
+            # as an unknown MQTT update.
+            data = payload.get('data')
+            if isinstance(data, AnycubicConsumableData):
+                data.force_empty()
+            return
         raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.unknown.format('light'))
 
     def _process_mqtt_update_video(
@@ -870,9 +878,11 @@ class AnycubicPrinter:
         payload: AnycubicConsumableData,
     ) -> None:
         """Handle video status updates (camera streaming/capture events)."""
-        if action in ['stopCapture', 'startCapture', 'push', 'query']:
-            # Common states observed: pushStopped / done / success
-            if state in ['pushStopped', 'done', 'success', 'pushStarted', 'stopped', 'started']:
+        action_norm = str(action or '').strip().lower()
+        state_norm = str(state or '').strip().lower()
+        if action_norm in ['stopcapture', 'startcapture', 'push', 'query']:
+            # Common states observed: pushStopped / done / success.
+            if state_norm in ['pushstopped', 'done', 'success', 'pushstarted', 'stopped', 'started', 'initsuccess']:
                 data = payload.get('data')
                 if isinstance(data, AnycubicConsumableData):
                     data.force_empty()

@@ -36,6 +36,7 @@ PLATFORMS_CLOUD = [
     "light",
     "number",
     "binary_sensor",
+    "camera",
 ]
 
 
