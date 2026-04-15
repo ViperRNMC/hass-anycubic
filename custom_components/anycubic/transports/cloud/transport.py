@@ -29,6 +29,16 @@ AUTH_MODE_LABELS: dict[AnycubicAuthMode, str] = {
 class CloudTransport(AnycubicTransport):
     """Cloud transport that normalizes cloud printer state to coordinator format."""
 
+    _PERIODIC_REAUTH_FAILURE_THRESHOLD = 3
+
+    _SPEED_OPTION_ALIASES: dict[str, str] = {
+        "silent": "silent",
+        "quiet": "silent",
+        "standard": "standard",
+        "normal": "standard",
+        "sport": "sport",
+    }
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self._hass = hass
         self._entry = entry
@@ -40,6 +50,7 @@ class CloudTransport(AnycubicTransport):
         self._printers: list[Any] = []
         self._reauth_started = False
         self._mqtt_auth_fingerprint: tuple[Any, ...] | None = None
+        self._consecutive_periodic_auth_failures = 0
 
     async def async_setup(self, on_data: Callable[[dict], None]) -> None:
         self._on_data = on_data
@@ -183,6 +194,10 @@ class CloudTransport(AnycubicTransport):
             firmware = getattr(p.fw_version, "firmware_version", None)
             firmware_available = getattr(p.fw_version, "available_version", None)
 
+        dynamic_speed_map = self._build_print_speed_mode_map(
+            p.latest_project_available_print_speed_modes_data_object
+        )
+
         print_data = {
             "state": p.latest_project_print_status,
             "progress": p.latest_project_progress_percentage,
@@ -265,6 +280,7 @@ class CloudTransport(AnycubicTransport):
                         "progress": p.latest_project_progress_percentage,
                     },
                     "print_speed_mode": p.latest_project_print_speed_mode,
+                    "print_speed_mode_map": dynamic_speed_map,
                 },
             },
             "print": {"type": "print", "data": print_data},
@@ -289,6 +305,34 @@ class CloudTransport(AnycubicTransport):
             },
         }
         self._on_data(normalized)
+
+    @classmethod
+    def _build_print_speed_mode_map(cls, mode_data: Any) -> dict[str, int]:
+        """Build a stable option->mode map from cloud-provided speed mode metadata."""
+        result: dict[str, int] = {}
+        if not isinstance(mode_data, list):
+            return result
+
+        for item in mode_data:
+            if not isinstance(item, dict):
+                continue
+            description = str(item.get("description", "")).strip().lower()
+            if not description:
+                continue
+            mode_value = item.get("mode")
+            if mode_value is None:
+                continue
+            try:
+                mode_int = int(mode_value)
+            except (TypeError, ValueError):
+                continue
+
+            canonical = cls._SPEED_OPTION_ALIASES.get(description)
+            if canonical is None:
+                continue
+            result[canonical] = mode_int
+
+        return result
 
     async def async_send_command(self, msg_type: str, action: str, data: Any = None) -> None:
         if not self._selected_printer:
@@ -412,15 +456,38 @@ class CloudTransport(AnycubicTransport):
         if not self._api:
             return
 
+        is_periodic_refresh = reason == "periodic_refresh"
+
         try:
             authenticated = await self._api.check_api_tokens()
         except Exception as err:
             _LOGGER.debug("Cloud auth health check failed during %s: %s", reason, err)
-            authenticated = False
-
-        if not authenticated:
+            if is_periodic_refresh:
+                self._consecutive_periodic_auth_failures += 1
+                _LOGGER.warning(
+                    "Cloud auth check error during periodic refresh (%d/%d); postponing reauth",
+                    self._consecutive_periodic_auth_failures,
+                    self._PERIODIC_REAUTH_FAILURE_THRESHOLD,
+                )
+                if self._consecutive_periodic_auth_failures < self._PERIODIC_REAUTH_FAILURE_THRESHOLD:
+                    return
             await self._start_reauth(reason)
             return
+
+        if not authenticated:
+            if is_periodic_refresh:
+                self._consecutive_periodic_auth_failures += 1
+                _LOGGER.warning(
+                    "Cloud auth check returned unauthenticated during periodic refresh (%d/%d)",
+                    self._consecutive_periodic_auth_failures,
+                    self._PERIODIC_REAUTH_FAILURE_THRESHOLD,
+                )
+                if self._consecutive_periodic_auth_failures < self._PERIODIC_REAUTH_FAILURE_THRESHOLD:
+                    return
+            await self._start_reauth(reason)
+            return
+
+        self._consecutive_periodic_auth_failures = 0
 
         new_fingerprint = self._get_mqtt_auth_fingerprint()
         if new_fingerprint != self._mqtt_auth_fingerprint:
