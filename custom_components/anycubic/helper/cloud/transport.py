@@ -16,14 +16,14 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .auth import AnycubicAuthMode
 from .mqtt_api import AnycubicMQTTAPI
+from .. import ErrorsSystem
 from ...const import CONF_PRINTER_ID, CONF_USER_AUTH_MODE, CONF_USER_DEVICE_ID, CONF_USER_TOKEN, DOMAIN
-from ...const import CLOUD_AUTH_MODE_ANDROID, CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_WEB
+from ...const import CLOUD_AUTH_MODE_ANDROID, CLOUD_AUTH_MODE_SLICER
 from ..tbase import AnycubicTransport
 
 _LOGGER = logging.getLogger(__name__)
 
 AUTH_MODE_LABELS: dict[AnycubicAuthMode, str] = {
-    AnycubicAuthMode.WEB: "web",
     AnycubicAuthMode.SLICER: "slicer",
     AnycubicAuthMode.ANDROID: "android",
 }
@@ -99,7 +99,7 @@ class CloudTransport(AnycubicTransport):
     async def _setup_api(self) -> None:
         token = _normalize_credential(self._entry.data.get(CONF_USER_TOKEN))
         if not token:
-            raise ValueError("Cloud mode requires user_token")
+            raise ValueError(ErrorsSystem.cloud_requires_token)
 
         normalized_device_id = _normalize_credential(self._entry.data.get(CONF_USER_DEVICE_ID))
 
@@ -121,55 +121,46 @@ class CloudTransport(AnycubicTransport):
         configured_mode: AnycubicAuthMode | None = None
         if isinstance(auth_mode_raw, str):
             mode_name = auth_mode_raw.strip().lower()
-            if mode_name == CLOUD_AUTH_MODE_WEB:
-                configured_mode = AnycubicAuthMode.WEB
-            elif mode_name == CLOUD_AUTH_MODE_SLICER:
+            if mode_name == CLOUD_AUTH_MODE_SLICER:
                 configured_mode = AnycubicAuthMode.SLICER
             elif mode_name == CLOUD_AUTH_MODE_ANDROID:
                 configured_mode = AnycubicAuthMode.ANDROID
         elif auth_mode_raw is not None:
             try:
-                configured_mode = AnycubicAuthMode(int(auth_mode_raw))
+                parsed_mode = AnycubicAuthMode(int(auth_mode_raw))
+                if parsed_mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.ANDROID):
+                    configured_mode = parsed_mode
             except Exception:
                 configured_mode = None
 
         mode_candidates: list[AnycubicAuthMode] = []
         if configured_mode is not None:
             mode_candidates.append(configured_mode)
-        for mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.WEB, AnycubicAuthMode.ANDROID):
+        for mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.ANDROID):
             if mode not in mode_candidates:
                 mode_candidates.append(mode)
 
         success = False
         selected_mode: AnycubicAuthMode | None = None
         for mode in mode_candidates:
-            auto_pick_variants = [True]
-            if mode == AnycubicAuthMode.SLICER:
-                # Some users provide a direct XX-Token while selecting slicer mode.
-                # Try both access-token exchange and direct-token variants.
-                auto_pick_variants = [True, False]
-
-            for auto_pick_token in auto_pick_variants:
-                self._api.set_authentication(
-                    auth_token=token,
-                    auth_mode=mode,
-                    device_id=normalized_device_id,
-                    auto_pick_token=auto_pick_token,
-                )
-                try:
-                    if await self._api.check_api_tokens():
-                        success = True
-                        selected_mode = mode
-                        break
-                except Exception as err:
-                    variant = "access_token" if auto_pick_token else "direct_token"
-                    _LOGGER.debug("Cloud auth attempt failed for mode %s (%s): %s", mode, variant, err)
+            self._api.set_authentication(
+                auth_token=token,
+                auth_mode=mode,
+                device_id=normalized_device_id,
+            )
+            try:
+                if await self._api.check_api_tokens():
+                    success = True
+                    selected_mode = mode
+                    break
+            except Exception as err:
+                _LOGGER.debug("Cloud auth attempt failed for mode %s: %s", mode, err)
 
             if success:
                 break
 
         if not success:
-            raise ValueError("Cloud auth failed")
+            raise ValueError(ErrorsSystem.cloud_auth_failed)
 
         updates: dict[str, Any] = {}
         if selected_mode is not None and self._entry.data.get(CONF_USER_AUTH_MODE) != selected_mode.name.lower():
@@ -191,7 +182,7 @@ class CloudTransport(AnycubicTransport):
         printers = await self._api.list_my_printers(ignore_init_errors=True)
         self._printers = [p for p in printers if p is not None]
         if not self._printers:
-            raise ValueError("No cloud printers found for this account")
+            raise ValueError(ErrorsSystem.no_cloud_printers)
 
         configured_printer_id = self._entry.data.get(CONF_PRINTER_ID)
         self._selected_printer = None
@@ -231,7 +222,7 @@ class CloudTransport(AnycubicTransport):
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._mqtt_task
                 self._mqtt_task = None
-            raise ValueError("Cloud MQTT connect timed out")
+            raise ValueError(ErrorsSystem.cloud_mqtt_timeout)
         self._mqtt_auth_fingerprint = self._get_mqtt_auth_fingerprint()
 
     def _mqtt_callback_printer_update(self) -> None:
@@ -987,7 +978,6 @@ class CloudTransport(AnycubicTransport):
             getattr(auth, "api_user_email", None),
             getattr(auth, "api_user_id", None),
             auth_config.get("auth_token"),
-            auth_config.get("auth_access_token"),
             auth_config.get("device_id"),
             auth_config.get("auth_mode"),
         )

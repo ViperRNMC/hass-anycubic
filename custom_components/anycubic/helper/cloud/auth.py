@@ -12,16 +12,14 @@ from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
-from .const_values import (
+from ...const import (
     AC_KNOWN_AID,
     AC_KNOWN_CID_APP,
-    AC_KNOWN_CID_WEB,
     AC_KNOWN_SEC,
     AC_KNOWN_VID_APP,
     AC_KNOWN_VID_SLICER_NEXT,
-    AC_KNOWN_VID_WEB,
 )
-from .error_strings import ErrorsAuth, ErrorsMQTTClient
+from .. import ErrorsAuth, ErrorsMQTTClient
 from .exceptions import AnycubicAuthError, AnycubicMQTTClientError
 from .helpers import (
     generate_android_app_nonce,
@@ -34,7 +32,6 @@ from .helpers import (
 
 
 class AnycubicAuthMode(IntEnum):
-    WEB = 1
     ANDROID = 2
     SLICER = 3
 
@@ -63,7 +60,7 @@ class AnycubicAuthentication:
         auth_access_token: str | None = None,
     ) -> None:
         self._auth_token: str | None = auth_token
-        self._auth_mode: AnycubicAuthMode = auth_mode or AnycubicAuthMode.WEB
+        self._auth_mode: AnycubicAuthMode = auth_mode or AnycubicAuthMode.SLICER
         self._app_id: str | None = None
         self._app_secret: str | None = None
         self._app_version: str | None = None
@@ -107,9 +104,7 @@ class AnycubicAuthentication:
 
     @property
     def requires_user_agent(self) -> bool:
-        return (
-            self._auth_mode == AnycubicAuthMode.WEB
-        )
+        return False
 
     @property
     def requires_access_token(self) -> bool:
@@ -164,33 +159,24 @@ class AnycubicAuthentication:
         self._app_secret = AC_KNOWN_SEC
 
     def _set_version(self) -> None:
-        if self._auth_mode == AnycubicAuthMode.WEB:
-            self._app_version = AC_KNOWN_VID_WEB
-        elif self._auth_mode == AnycubicAuthMode.SLICER:
+        if self._auth_mode == AnycubicAuthMode.SLICER:
             self._app_version = AC_KNOWN_VID_SLICER_NEXT
         else:
             self._app_version = AC_KNOWN_VID_APP
 
     def _set_client_id(self) -> None:
-        if self._auth_mode == AnycubicAuthMode.WEB:
-            self._app_client_id = AC_KNOWN_CID_WEB
-        else:
-            self._app_client_id = AC_KNOWN_CID_APP
+        self._app_client_id = AC_KNOWN_CID_APP
 
     def _set_device_type(self) -> None:
         if self._auth_mode == AnycubicAuthMode.ANDROID:
             self._device_type = 'android'
-        elif self._auth_mode == AnycubicAuthMode.SLICER:
+        else:
             self._device_type = 'pcf'
-        elif self._auth_mode == AnycubicAuthMode.WEB:
-            self._device_type = 'web'
 
     def _set_cn(self) -> None:
         if self._auth_mode == AnycubicAuthMode.ANDROID:
             self._auth_cn = '0'
-        elif self._auth_mode == AnycubicAuthMode.SLICER:
-            self._auth_cn = '1'
-        elif self._auth_mode == AnycubicAuthMode.WEB:
+        else:
             self._auth_cn = '1'
 
     def _generate_device_id(self) -> None:
@@ -198,12 +184,9 @@ class AnycubicAuthentication:
             self._device_id = generate_fake_device_id()
 
     def _generate_nonce(self) -> str:
-        if self._auth_mode == AnycubicAuthMode.WEB:
+        if self._auth_mode == AnycubicAuthMode.SLICER:
             return generate_web_nonce()
-        elif self._auth_mode == AnycubicAuthMode.SLICER:
-            return generate_web_nonce()
-        elif self._auth_mode == AnycubicAuthMode.ANDROID:
-            return generate_android_app_nonce()
+        return generate_android_app_nonce()
 
     def clear_cached_access_user_token(self) -> bool:
         if (
@@ -254,6 +237,22 @@ class AnycubicAuthentication:
             'auth_mode': self._auth_mode,
         }
 
+    @property
+    def auth_access_token_payload(
+        self,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if self._auth_mode == AnycubicAuthMode.ANDROID:
+            params['device_type'] = 'android'
+        elif self._auth_mode == AnycubicAuthMode.SLICER:
+            params['device_type'] = 'pcf'
+        else:
+            params['device_type'] = 'web'
+
+        params['access_token'] = self._auth_access_token
+
+        return params
+
     def get_auth_headers(
         self,
         with_token: bool = False,
@@ -279,22 +278,6 @@ class AnycubicAuthentication:
         auth_headers['XX-LANGUAGE'] = 'US'
 
         return auth_headers
-
-    @property
-    def auth_access_token_payload(
-        self,
-    ) -> dict[str, Any]:
-        params: dict[str, Any] = {}
-        if self._auth_mode == AnycubicAuthMode.ANDROID:
-            params['device_type'] = 'android'
-        elif self._auth_mode == AnycubicAuthMode.SLICER:
-            params['device_type'] = 'pcf'
-        else:
-            params['device_type'] = 'web'
-
-        params['access_token'] = self._auth_access_token
-
-        return params
 
     def get_user_id_md5_tuple(self) -> tuple[int, str]:
         if not self.api_user_id:

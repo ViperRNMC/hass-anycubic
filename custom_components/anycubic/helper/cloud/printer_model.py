@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .const_enums import (
+from ...const import (
     AnycubicFunctionID,
     AnycubicPrinterMaterialType,
     AnycubicPrintStatus,
 )
-from .error_strings import (
+from .. import (
     ErrorsDataParsing,
     ErrorsGeneral,
     ErrorsMQTTUpdate,
@@ -18,15 +18,11 @@ from .exceptions import (
     AnycubicMQTTUnhandledData,
     AnycubicMQTTUnknownUpdate,
 )
-from .helpers import (
-    get_part_from_mqtt_topic,
-    time_duration_string_to_delta,
-    timedelta_to_dhm_string,
-    timedelta_to_total_hours,
-)
-from .data_consumable import AnycubicConsumableData
-from .data_files import AnycubicFile
-from .data_printer_properties import (
+from .helpers import get_part_from_mqtt_topic
+from ..time import time_duration_string_to_delta, timedelta_to_dhm_string, timedelta_to_total_hours
+from .mqtt_payload import AnycubicConsumableData
+
+from .printer_components import (
     AnycubicMachineColorInfo,
     AnycubicMachineData,
     AnycubicMachineExternalShelves,
@@ -36,13 +32,13 @@ from .data_printer_properties import (
     AnycubicMaterialColor,
     AnycubicMultiColorBox,
 )
-from .data_project import AnycubicProject
+from .project_model import AnycubicProject
 
 if TYPE_CHECKING:
     from datetime import timedelta
 
-    from .api_functions import AnycubicAPIFunctions as AnycubicAPI
-    from .data_printer_properties import AnycubicDryingStatus, AnycubicMaterialMapping
+    from .functions import AnycubicAPIFunctions as AnycubicAPI
+    from .printer_components import AnycubicDryingStatus, AnycubicMaterialMapping
 
 
 class AnycubicPrinter:
@@ -100,8 +96,6 @@ class AnycubicPrinter:
         "_lights_by_type",
         "_print_speed_pct",
         "_print_speed_mode",
-        "_local_file_list",
-        "_udisk_file_list",
         "_has_peripheral_camera",
         "_has_peripheral_multi_color_box",
         "_has_peripheral_udisk",
@@ -207,8 +201,6 @@ class AnycubicPrinter:
         self._lights_by_type: dict[int, dict[str, int]] = {}
         self._print_speed_pct: int = 0
         self._print_speed_mode: int = 0
-        self._local_file_list: list[AnycubicFile] | None = None
-        self._udisk_file_list: list[AnycubicFile] | None = None
         self._has_peripheral_camera: bool = False
         self._has_peripheral_multi_color_box: bool = False
         self._has_peripheral_udisk: bool = False
@@ -251,29 +243,7 @@ class AnycubicPrinter:
             except ValueError:
                 self._material_type = material_type
 
-    def _set_local_file_list(self, file_list: list[dict[str, Any]] | None) -> None:
-        if file_list is None:
-            return
 
-        self._local_file_list = list()
-        for x in file_list:
-            file = AnycubicFile.from_json(x)
-            if file:
-                self._local_file_list.append(file)
-            else:
-                raise AnycubicDataParsingError(ErrorsDataParsing.local_file_list.format(file_list))
-
-    def _set_udisk_file_list(self, file_list: list[dict[str, Any]] | None) -> None:
-        if file_list is None:
-            return
-
-        self._udisk_file_list = list()
-        for x in file_list:
-            file = AnycubicFile.from_json(x)
-            if file:
-                self._udisk_file_list.append(file)
-            else:
-                raise AnycubicDataParsingError(ErrorsDataParsing.udisk_file_list.format(file_list))
 
     def _set_multi_color_box(self, multi_color_box: list[dict[str, Any]] | dict[str, Any] | None) -> None:
         self._multi_color_box: list[AnycubicMultiColorBox] | None = None
@@ -1183,32 +1153,7 @@ class AnycubicPrinter:
         else:
             raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.shelves)
 
-    def _process_mqtt_update_file(
-        self,
-        action: str,
-        state: str,
-        payload: AnycubicConsumableData,
-    ) -> None:
-        if action == 'listLocal' and state == 'done':
-            data = payload['data']['records']
-            self._set_local_file_list(data)
-            return
-        elif action == 'deleteLocal' and state == 'success':
-            # Not Yet Needed
-            return
-        elif action == 'listUdisk' and state == 'done':
-            data = payload['data']['records']
-            self._set_udisk_file_list(data)
-            return
-        elif action == 'deleteUdisk' and state == 'success':
-            # Not Yet Needed
-            return
-        elif action == 'cloudRecommendList' and state == 'done':
-            # Not Yet Needed
-            payload.force_empty()
-            return
-        else:
-            raise AnycubicMQTTUnknownUpdate(ErrorsMQTTUpdate.file)
+
 
     def _process_mqtt_update_peripherals(
         self,
@@ -1294,8 +1239,7 @@ class AnycubicPrinter:
         elif msg_type == 'extfilbox':
             self._process_mqtt_update_shelves(action, state, payload)
 
-        elif msg_type == 'file':
-            self._process_mqtt_update_file(action, state, payload)
+
 
         elif msg_type == 'peripherie':
             self._process_mqtt_update_peripherals(action, state, payload)
@@ -1703,25 +1647,7 @@ class AnycubicPrinter:
     def latest_project(self) -> AnycubicProject | None:
         return self._latest_project
 
-    @property
-    def local_file_list_object(self) -> list[dict[str, str | float]] | None:
-        if not self._local_file_list or len(self._local_file_list) < 1:
-            return None
 
-        file_list = list([
-            file.data_object for file in self._local_file_list
-        ])
-        return file_list
-
-    @property
-    def udisk_file_list_object(self) -> list[dict[str, str | float]] | None:
-        if not self._udisk_file_list or len(self._udisk_file_list) < 1:
-            return None
-
-        file_list = list([
-            file.data_object for file in self._udisk_file_list
-        ])
-        return file_list
 
     @property
     def primary_multi_color_box_fw_firmware_version(self) -> str | None:
@@ -2461,7 +2387,7 @@ class AnycubicPrinter:
 
     @staticmethod
     def _build_print_settings(**kwargs: Any) -> Any:
-        from .data_printing_settings import AnycubicPrintingSettings
+        from .print_models import AnycubicPrintingSettings
 
         return AnycubicPrintingSettings(**kwargs)
 

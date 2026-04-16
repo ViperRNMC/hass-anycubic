@@ -44,7 +44,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Expand any per-box template definitions using coordinator knowledge
     expanded_defs = coordinator.expand_definitions(NUMBER_DEFINITIONS)
-    entities = [AnycubicNumber(coordinator, d) for d in expanded_defs]
+    entities = [AnycubicNumberEntity(coordinator, d) for d in expanded_defs]
     if entities:
         async_add_entities(entities)
 
@@ -56,7 +56,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             for d in expanded:
                 # only create per-box entries (they will include box_id)
                 if d.get("box_id") is not None:
-                    new_entities.append(AnycubicNumber(coordinator, d))
+                    new_entities.append(AnycubicNumberEntity(coordinator, d))
             if not new_entities:
                 return
 
@@ -76,7 +76,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         unsub = async_dispatcher_connect(coordinator.hass, f"{DOMAIN}_boxes_updated", _on_boxes_updated)
 
 
-class AnycubicNumber(CoordinatorEntity, NumberEntity):
+class AnycubicNumberEntity(CoordinatorEntity, NumberEntity):
     """Generic number entity for target temperatures and per-box drying values."""
 
     def __init__(self, coordinator, definition: dict):

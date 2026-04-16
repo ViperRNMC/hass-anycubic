@@ -18,7 +18,6 @@ from .const import (
     CONF_USER_TOKEN,
     CLOUD_AUTH_MODE_ANDROID,
     CLOUD_AUTH_MODE_SLICER,
-    CLOUD_AUTH_MODE_WEB,
     CONNECTION_MODE_CLOUD,
     CONNECTION_MODE_LAN,
     DOMAIN,
@@ -41,7 +40,7 @@ STEP_LAN_SCHEMA = vol.Schema({vol.Required(CONF_HOST): str})
 STEP_CLOUD_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USER_AUTH_MODE, default=CLOUD_AUTH_MODE_SLICER): vol.In(
-            [CLOUD_AUTH_MODE_WEB, CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]
+            [CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]
         ),
         vol.Required(CONF_USER_TOKEN): str,
         vol.Optional(CONF_USER_DEVICE_ID): str,
@@ -60,8 +59,6 @@ def _normalize_credential(value: Any) -> str:
 def _resolve_auth_mode(auth_mode_raw: Any) -> AnycubicAuthMode | None:
     if isinstance(auth_mode_raw, str):
         mode_name = auth_mode_raw.strip().lower()
-        if mode_name == CLOUD_AUTH_MODE_WEB:
-            return AnycubicAuthMode.WEB
         if mode_name == CLOUD_AUTH_MODE_SLICER:
             return AnycubicAuthMode.SLICER
         if mode_name == CLOUD_AUTH_MODE_ANDROID:
@@ -70,7 +67,10 @@ def _resolve_auth_mode(auth_mode_raw: Any) -> AnycubicAuthMode | None:
 
     if auth_mode_raw is not None:
         try:
-            return AnycubicAuthMode(int(auth_mode_raw))
+            parsed_mode = AnycubicAuthMode(int(auth_mode_raw))
+            if parsed_mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.ANDROID):
+                return parsed_mode
+            return None
         except Exception:
             return None
 
@@ -82,7 +82,7 @@ def _build_auth_mode_candidates(auth_mode_raw: Any) -> list[AnycubicAuthMode]:
     mode_candidates: list[AnycubicAuthMode] = []
     if configured_mode is not None:
         mode_candidates.append(configured_mode)
-    for mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.WEB, AnycubicAuthMode.ANDROID):
+    for mode in (AnycubicAuthMode.SLICER, AnycubicAuthMode.ANDROID):
         if mode not in mode_candidates:
             mode_candidates.append(mode)
     return mode_candidates
@@ -96,6 +96,13 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._reauth_entry = None
 
+    @staticmethod
+    def _reauth_auth_mode_default(entry_data: dict[str, Any]) -> str:
+        configured = str(entry_data.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER)).strip().lower()
+        if configured == CLOUD_AUTH_MODE_ANDROID:
+            return CLOUD_AUTH_MODE_ANDROID
+        return CLOUD_AUTH_MODE_SLICER
+
     async def _async_validate_cloud_credentials(
         self,
         auth_mode: Any,
@@ -107,27 +114,24 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
         Returns the selected mode name on success, None on failure.
         """
         cookie_jar = CookieJar(unsafe=True)
-        websession = async_create_clientsession(self.hass, cookie_jar=cookie_jar)
+        websession = async_create_clientsession(
+            self.hass,
+            cookie_jar=cookie_jar,
+            verify_ssl=False,
+        )
         api = AnycubicMQTTAPI(session=websession, cookie_jar=cookie_jar)
 
         for mode in _build_auth_mode_candidates(auth_mode):
-            auto_pick_variants = [True]
-            if mode == AnycubicAuthMode.SLICER:
-                auto_pick_variants = [True, False]
-
-            for auto_pick_token in auto_pick_variants:
-                api.set_authentication(
-                    auth_token=token,
-                    auth_mode=mode,
-                    device_id=device_id,
-                    auto_pick_token=auto_pick_token,
-                )
-                try:
-                    if await api.check_api_tokens():
-                        return mode.name.lower()
-                except Exception as err:
-                    variant = "access_token" if auto_pick_token else "direct_token"
-                    _LOGGER.debug("Cloud config validation failed for mode %s (%s): %s", mode, variant, err)
+            api.set_authentication(
+                auth_token=token,
+                auth_mode=mode,
+                device_id=device_id,
+            )
+            try:
+                if await api.check_api_tokens():
+                    return mode.name.lower()
+            except Exception as err:
+                _LOGGER.debug("Cloud config validation failed for mode %s: %s", mode, err)
 
         return None
 
@@ -229,8 +233,8 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         vol.Required(
                             CONF_USER_AUTH_MODE,
-                            default=self._reauth_entry.data.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER),
-                        ): vol.In([CLOUD_AUTH_MODE_WEB, CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
+                            default=self._reauth_auth_mode_default(self._reauth_entry.data),
+                        ): vol.In([CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
                         vol.Required(CONF_USER_TOKEN): str,
                         vol.Optional(
                             CONF_USER_DEVICE_ID,
@@ -254,8 +258,8 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         vol.Required(
                             CONF_USER_AUTH_MODE,
-                            default=self._reauth_entry.data.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER),
-                        ): vol.In([CLOUD_AUTH_MODE_WEB, CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
+                            default=self._reauth_auth_mode_default(self._reauth_entry.data),
+                        ): vol.In([CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
                         vol.Required(CONF_USER_TOKEN): str,
                         vol.Optional(
                             CONF_USER_DEVICE_ID,
@@ -282,8 +286,8 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(
                     CONF_USER_AUTH_MODE,
-                    default=self._reauth_entry.data.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER),
-                ): vol.In([CLOUD_AUTH_MODE_WEB, CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
+                    default=self._reauth_auth_mode_default(self._reauth_entry.data),
+                ): vol.In([CLOUD_AUTH_MODE_SLICER, CLOUD_AUTH_MODE_ANDROID]),
                 vol.Required(CONF_USER_TOKEN): str,
                 vol.Optional(
                     CONF_USER_DEVICE_ID,

@@ -1,6 +1,6 @@
 """Clean generic switch platform for Anycubic Ace Pro features.
 
-One class `AnycubicSwitch` is driven by `SWITCH_DEFINITIONS` in `const.py`.
+One class `AnycubicSwitchEntity` is driven by `SWITCH_DEFINITIONS` in `const.py`.
 Supports passing optional parameters for setDry (target_temp, duration).
 """
 
@@ -50,10 +50,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     for d in expanded_switches:
         if d.get("device_type") == DEVICE_TYPE_ACE_PRO:
             box_id = d.get("box_id")
-            entities.append(AnycubicSwitch(coordinator, box_id, d))
+            entities.append(AnycubicSwitchEntity(coordinator, box_id, d))
         else:
             # non-boxed switches (if any)
-            entities.append(AnycubicSwitch(coordinator, None, d))
+            entities.append(AnycubicSwitchEntity(coordinator, None, d))
 
     # If no boxes were available, wait for boxes_updated and create per-box switches
     if not boxes:
@@ -63,9 +63,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
             for d in expanded:
                 if d.get("device_type") == DEVICE_TYPE_ACE_PRO:
                     box_id = d.get("box_id")
-                    new_entities.append(AnycubicSwitch(coordinator, box_id, d))
+                    new_entities.append(AnycubicSwitchEntity(coordinator, box_id, d))
                 else:
-                    new_entities.append(AnycubicSwitch(coordinator, None, d))
+                    new_entities.append(AnycubicSwitchEntity(coordinator, None, d))
             if not new_entities:
                 return
 
@@ -86,7 +86,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities)
 
 
-class AnycubicSwitch(CoordinatorEntity, SwitchEntity):
+class AnycubicSwitchEntity(CoordinatorEntity, SwitchEntity):
     """Generic switch created from a SWITCH_DEFINITIONS entry for a box."""
 
     def __init__(self, coordinator, box_id: int, definition: dict):

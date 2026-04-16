@@ -23,10 +23,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.error("Coordinator not found for camera setup: %s", entry.entry_id)
         return
 
-    async_add_entities([AnycubicCamera(coordinator)])
+    async_add_entities([AnycubicCameraEntity(coordinator)])
 
 
-class AnycubicCamera(CoordinatorEntity, Camera):
+class AnycubicCameraEntity(CoordinatorEntity, Camera):
     """Camera entity backed by transport-provided stream URLs."""
 
     def __init__(self, coordinator):

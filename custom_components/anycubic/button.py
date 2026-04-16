@@ -16,7 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Anycubic buttons for the given config entry.
 
     The coordinator instance is read from hass.data and used to create
-    one :class:`AnycubicButton` per definition in ``BUTTON_DEFINITIONS``.
+    one :class:`AnycubicButtonEntity` per definition in ``BUTTON_DEFINITIONS``.
     """
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
 
@@ -26,10 +26,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     for d in BUTTON_DEFINITIONS:
         if d.get("key") in ("print_pause", "print_resume"):
             continue
-        entities.append(AnycubicButton(coordinator, d))
+        entities.append(AnycubicButtonEntity(coordinator, d))
 
     # Add a single toggle button for print pause/resume with dynamic label
-    entities.append(AnycubicPrintToggle(coordinator))
+    entities.append(AnycubicPrintToggleEntity(coordinator))
 
     async_add_entities(entities)
 
@@ -45,7 +45,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.debug("Failed to query print on button setup")
 
 
-class AnycubicButton(CoordinatorEntity, ButtonEntity):
+class AnycubicButtonEntity(CoordinatorEntity, ButtonEntity):
     """Generic button entity for Anycubic actions (homing, print control)."""
 
     def __init__(self, coordinator, definition: dict):
@@ -95,7 +95,7 @@ class AnycubicButton(CoordinatorEntity, ButtonEntity):
         return build_main_device_info(self.coordinator)
 
 
-class AnycubicPrintToggle(CoordinatorEntity, ButtonEntity):
+class AnycubicPrintToggleEntity(CoordinatorEntity, ButtonEntity):
     """Single button that toggles print pause/resume with dynamic label.
 
     The button displays 'Pause' when a print is actively running and

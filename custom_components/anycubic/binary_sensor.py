@@ -35,7 +35,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities: list[BinarySensorEntity] = []
     for definition in BINARY_DEFINITIONS:
         try:
-            entities.append(AnycubicBinarySensor(coordinator, definition))
+            entities.append(AnycubicBinarySensorEntity(coordinator, definition))
         except Exception:  # pragma: no cover - defensive
             _LOGGER.exception("Failed to create binary sensor from definition %s", definition)
 
@@ -53,7 +53,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.debug("Coordinator tempature query failed or MQTT not ready")
 
 
-class AnycubicBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class AnycubicBinarySensorEntity(CoordinatorEntity, BinarySensorEntity):
     """Definition-driven binary sensor.
 
     Supported types:

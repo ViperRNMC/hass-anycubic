@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .error_strings import ErrorsDataParsing
+from .. import ErrorsDataParsing
 from .exceptions import AnycubicDataParsingError
 
 

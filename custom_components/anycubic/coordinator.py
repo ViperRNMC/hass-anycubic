@@ -18,7 +18,7 @@ from .const import (
     CONNECTION_MODE_LAN,
     DEVICE_TYPE_ACE_PRO,
     DOMAIN,
-    EXT_FILBOX_KEY,
+    DEVICE_TYPE_EXTFILBOX,
     MULTI_COLOR_BOX_KEY,
 )
 from .helper.tbase import AnycubicTransport
@@ -207,7 +207,7 @@ class AnycubicCoordinator(DataUpdateCoordinator):
 
     def _merge_special(self, existing: dict | None, incoming: dict, key: str) -> dict:
         """Preserve last-known ACE slot data when incoming update has empty slots."""
-        if key not in (MULTI_COLOR_BOX_KEY, EXT_FILBOX_KEY):
+        if key not in (MULTI_COLOR_BOX_KEY, DEVICE_TYPE_EXTFILBOX):
             return incoming
         try:
             data_section = (incoming or {}).get("data") or {}

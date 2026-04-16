@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .data_printer_properties import AnycubicMaterialMapping
+    from .printer_components import AnycubicMaterialMapping
 
 
 class AnycubicBaseOrderRequest:
@@ -150,115 +150,6 @@ class AnycubicProjectCtrlOrderRequest(AnycubicProjectOrderRequest):
             f"order_data={self._order_data}, "
             f"ams_info={self._ams_info}, "
             f"print_settings={self._print_settings})"
-        )
-
-
-class AnycubicBaseStartPrintRequest:
-    __slots__ = (
-        "_file_key",
-        "_file_name",
-        "_filetype",
-        "_task_setting_ai_detect",
-        "_task_setting_camera_timelapse",
-    )
-
-    def __init__(
-        self,
-        file_key: str = "",
-        file_name: str = "",
-        filetype: int = 0,
-        task_setting_ai_detect: int = 0,
-        task_setting_camera_timelapse: int = 0,
-    ) -> None:
-        self._file_key = file_key
-        self._file_name = file_name
-        self._filetype = filetype
-        self._task_setting_ai_detect = task_setting_ai_detect
-        self._task_setting_camera_timelapse = task_setting_camera_timelapse
-
-    @property
-    def task_settings(self) -> dict[str, Any]:
-        return {
-            'ai_detect': self._task_setting_ai_detect,
-            'camera_timelapse': self._task_setting_camera_timelapse,
-        }
-
-    @property
-    def data(self) -> dict[str, Any]:
-        return {
-            'filetype': self._filetype,
-            'file_key': self._file_key,
-            'file_name': self._file_name,
-            'task_settings': self.task_settings,
-        }
-
-    def __repr__(self) -> str:
-        return (
-            f"AnycubicBaseStartPrintRequest("
-            f"filetype={self._filetype}, "
-            f"file_name={self._file_name}, "
-            f"task_settings={self.task_settings})"
-        )
-
-
-class AnycubicStartPrintRequestCloud(AnycubicBaseStartPrintRequest):
-    __slots__ = (
-        "_file_id",
-        "_hollow_param",
-        "_is_delete_file",
-        "_matrix",
-        "_project_type",
-        "_punching_param",
-        "_slice_param",
-        "_slice_size",
-        "_template_id",
-    )
-
-    def __init__(
-        self,
-        file_id: int = -1,
-        hollow_param: Any = None,
-        is_delete_file: int = 0,
-        matrix: str = "",
-        project_type: int = 1,
-        punching_param: Any = None,
-        slice_param: dict[str, Any] | None = None,
-        slice_size: Any = None,
-        template_id: int = 0,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(**kwargs)
-        self._file_id = file_id
-        self._hollow_param = hollow_param
-        self._is_delete_file = int(is_delete_file)
-        self._matrix = matrix
-        self._project_type = project_type
-        self._punching_param = punching_param
-        self._slice_param = slice_param
-        self._slice_size = slice_size
-        self._template_id = template_id
-
-    @property
-    def data(self) -> dict[str, Any]:
-        return {
-            **super().data,
-            'file_id': self._file_id,
-            'hollow_param': self._hollow_param,
-            'is_delete_file': self._is_delete_file,
-            'matrix': self._matrix,
-            'project_type': self._project_type,
-            'punching_param': self._punching_param,
-            'slice_param': self._slice_param,
-            'slice_size': self._slice_size,
-            'template_id': self._template_id,
-        }
-
-    def __repr__(self) -> str:
-        return (
-            f"AnycubicStartPrintRequestCloud("
-            f"filetype={self._filetype}, "
-            f"file_id={self._file_name}, "
-            f"task_settings={self.task_settings})"
         )
 
 

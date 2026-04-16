@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 import math
 
 from homeassistant.components.sensor import SensorEntity
@@ -15,7 +15,6 @@ from .const import (
     DOMAIN,
     SENSOR_DEFINITIONS,
     MULTI_COLOR_BOX_KEY,
-    EXT_FILBOX_KEY,
     DEVICE_TYPE_ACE_PRO,
     DEVICE_TYPE_EXTFILBOX,
     FILAMENT_DIAMETER_MM,
@@ -28,7 +27,7 @@ from .helper.device_info import (
 )
 from .helper.color import nearest_color_name
 from .helper.time import minutes_to_hhmm
-from .helper.path import get_from_path 
+from .helper.path import get_from_path
 
 try:
     import webcolors  # type: ignore
@@ -78,7 +77,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.debug("Coordinator async_get_boxes failed; falling back to cached boxes")
     _LOGGER.debug("sensor setup: found %d boxes at setup", len(boxes) if boxes is not None else 0)
     try:
-        await coordinator.async_query_topic(EXT_FILBOX_KEY)
+        await coordinator.async_query_topic(DEVICE_TYPE_EXTFILBOX)
     except Exception:
         _LOGGER.debug("Coordinator query for extfilbox failed or MQTT not ready")
 
@@ -87,7 +86,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities: list[SensorEntity] = []
     for d in expanded_defs:
         try:
-            entities.append(AnycubicSensor(coordinator, d))
+            entities.append(AnycubicSensorEntity(coordinator, d))
         except Exception:  # defensive: skip bad definitions
             _LOGGER.exception("Failed to create sensor from definition %s", d)
 
@@ -107,7 +106,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             for d in expanded:
                 if d.get("box_id") is not None:
                     try:
-                        new_entities.append(AnycubicSensor(coordinator, d))
+                        new_entities.append(AnycubicSensorEntity(coordinator, d))
                     except Exception:
                         _LOGGER.exception("Failed to create per-box sensor from definition %s", d)
             if not new_entities:
@@ -129,7 +128,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
         unsub = async_dispatcher_connect(coordinator.hass, f"{DOMAIN}_boxes_updated", _on_boxes_updated)
 
-class AnycubicSensor(CoordinatorEntity, SensorEntity):
+class AnycubicSensorEntity(CoordinatorEntity, SensorEntity):
     """Generic sensor backed by coordinator data.
 
     Definition keys supported:
@@ -316,7 +315,7 @@ class AnycubicSensor(CoordinatorEntity, SensorEntity):
                 # default: follow rest path inside the box dict
                 value = get_from_path(box, rest[2:]) if len(rest) >= 2 else None
         # Special handling for external filament rack (single-slot extfilbox)
-        if top == EXT_FILBOX_KEY:
+        if top == DEVICE_TYPE_EXTFILBOX:
             # top-level stored data may be either the full message dict or
             # already the inner 'data' section depending on MQTT normalization.
             if isinstance(data, dict):

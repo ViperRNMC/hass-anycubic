@@ -28,12 +28,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities: list[SelectEntity] = []
     for d in SELECT_DEFINITIONS:
-        entities.append(AnycubicSelect(coordinator, d))
+        entities.append(AnycubicSelectEntity(coordinator, d))
 
     async_add_entities(entities)
 
 
-class AnycubicSelect(CoordinatorEntity, SelectEntity):
+class AnycubicSelectEntity(CoordinatorEntity, SelectEntity):
     """Generic Select backed by SELECT_DEFINITIONS."""
 
     _ACTIVE_PRINT_STATES = {"printing", "paused", "pausing", "resuming", "preheating"}

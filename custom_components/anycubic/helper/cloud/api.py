@@ -6,13 +6,11 @@ import time
 from typing import Any, overload
 
 import aiohttp
-from aiofiles import open as aio_file_open
-from aiofiles.os import path as aio_path
 
-from .const_api_endpoints import API_ENDPOINT
-from .const_values import (
+from ...const import (
     ACCESS_TOKEN_LOGIN_RETRIES,
     ACCESS_TOKEN_LOGIN_RETRY_INTERVAL,
+    API_ENDPOINT,
     AUTH_DOMAIN,
     BASE_DOMAIN,
     DEFAULT_USER_AGENT,
@@ -20,7 +18,7 @@ from .const_values import (
     PUBLIC_API_ENDPOINT,
     WARN_INTERVAL_API_DURATION,
 )
-from .error_strings import (
+from .. import (
     ErrorsAPIParsing,
     ErrorsAuth,
     ErrorsAuthTokenExpired,
@@ -36,7 +34,6 @@ from .http import HTTP_METHODS, AnycubicAPIEndpoint
 
 class AnycubicAPIBase:
     __slots__ = (
-        "_cached_web_auth_token_path",
         "_base_url",
         "_public_api_root",
         "_session",
@@ -57,8 +54,6 @@ class AnycubicAPIBase:
         auth_mode: AnycubicAuthMode | None = None,
         device_id: str | None = None,
     ) -> None:
-        # Cache
-        self._cached_web_auth_token_path: str | None = None
         # API
         self._base_url: str = f"https://{BASE_DOMAIN}/"
         self._public_api_root: str = f"{self.base_url}{PUBLIC_API_ENDPOINT}"
@@ -286,17 +281,21 @@ class AnycubicAPIBase:
             auth_access_token=auth_access_token,
         )
 
-    async def _get_user_token_with_access_token_with_retry(self) -> None:
-        retries = ACCESS_TOKEN_LOGIN_RETRIES
-        for x in range(retries):
-            try:
-                await self._get_user_token_with_access_token()
-                return
-            except AnycubicAuthError:
-                if x < retries - 1:
-                    await asyncio.sleep(ACCESS_TOKEN_LOGIN_RETRY_INTERVAL)
-                else:
-                    raise
+    def get_auth_config_dict(self) -> dict[str, Any]:
+        self._tokens_changed = False
+
+        return self.anycubic_auth.get_auth_config_dict()
+
+    def load_auth_config_from_dict(
+        self,
+        data: dict[str, Any],
+        minimal: bool = False,
+    ) -> None:
+        self.anycubic_auth.load_auth_config_from_dict(
+            data,
+            minimal=minimal,
+        )
+        self._log_to_debug("Loaded auth tokens from dict.")
 
     async def _get_user_token_with_access_token(self) -> None:
         params = self.anycubic_auth.auth_access_token_payload
@@ -316,42 +315,21 @@ class AnycubicAPIBase:
         )
         self._log_to_debug("Logged in and retrieved user token with access_token.")
 
-    def get_auth_config_dict(self) -> dict[str, Any]:
-        self._tokens_changed = False
-
-        return self.anycubic_auth.get_auth_config_dict()
-
-    def load_auth_config_from_dict(
-        self,
-        data: dict[str, Any],
-        minimal: bool = False,
-    ) -> None:
-        self.anycubic_auth.load_auth_config_from_dict(
-            data,
-            minimal=minimal,
-        )
-        self._log_to_debug("Loaded auth tokens from dict.")
-
-    async def _load_cached_web_auth_token(self) -> None:
-        if (
-            self._cached_web_auth_token_path is not None
-            and (await aio_path.exists(self._cached_web_auth_token_path))
-        ):
-
+    async def _get_user_token_with_access_token_with_retry(self) -> None:
+        retries = ACCESS_TOKEN_LOGIN_RETRIES
+        for x in range(retries):
             try:
-                async with aio_file_open(self._cached_web_auth_token_path, mode='r') as wo:
-                    token = await wo.read()
-                self.set_authentication(
-                    auth_token=token,
-                )
-
-            except Exception:
-                pass
+                await self._get_user_token_with_access_token()
+                return
+            except AnycubicAuthError:
+                if x < retries - 1:
+                    await asyncio.sleep(ACCESS_TOKEN_LOGIN_RETRY_INTERVAL)
+                else:
+                    raise
 
     async def _check_can_access_api(
         self,
     ) -> bool:
-        await self._load_cached_web_auth_token()
         if self.anycubic_auth.requires_access_token:
             try:
                 await self._get_user_token_with_access_token_with_retry()

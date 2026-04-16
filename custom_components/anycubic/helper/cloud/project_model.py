@@ -4,9 +4,8 @@ import json
 import time
 from typing import TYPE_CHECKING, Any
 
-from .const_values import PROJECT_IMAGE_URL_BASE, REX_GCODE_EXT
-from .const_enums import AnycubicPrintStatus
-from .error_strings import (
+from ...const import AnycubicPrintStatus, PROJECT_IMAGE_URL_BASE, REX_GCODE_EXT
+from .. import (
     ErrorsDataParsing,
     ErrorsInvalidValue,
     ErrorsLoadingProps,
@@ -16,19 +15,15 @@ from .exceptions import (
     AnycubicInvalidValue,
     AnycubicPropertiesNotLoaded,
 )
-from .helpers import (
-    time_duration_string_to_delta,
-    timedelta_to_dhm_string,
-    timedelta_to_total_minutes,
-)
-from .data_print_speed_mode import AnycubicPrintSpeedMode
+from ..time import time_duration_string_to_delta, timedelta_to_dhm_string, timedelta_to_total_minutes
+from .print_models import AnycubicPrintSpeedMode
 
 if TYPE_CHECKING:
     from datetime import timedelta
 
-    from .api_functions import AnycubicAPIFunctions as AnycubicAPI
-    from .data_consumable import AnycubicConsumableData
-    from .data_printing_settings import AnycubicPrintingSettings
+    from .functions import AnycubicAPIFunctions as AnycubicAPI
+    from .mqtt_payload import AnycubicConsumableData
+    from .print_models import AnycubicPrintingSettings
 
 
 class AnycubicProject:
@@ -738,8 +733,7 @@ class AnycubicProject:
         key: str,
         value: Any,
     ) -> None:
-        if self._settings.get(key):
-            self._settings[key] = value
+        self._settings[key] = value
 
     def _get_inner_print_setting(self, key: str) -> Any:
         return self._settings.get('settings', {}).get(key)
@@ -862,10 +856,6 @@ class AnycubicProject:
             self._print_status == AnycubicPrintStatus.Checking or
             self._print_status == AnycubicPrintStatus.Preheating
         )
-
-    @property
-    def print_preheating(self) -> bool:
-        return self._print_status == AnycubicPrintStatus.Preheating
 
     @property
     def print_complete(self) -> bool:
@@ -1008,29 +998,6 @@ class AnycubicProject:
         return list([
             x.data_object for x in self._available_print_speed_modes
         ])
-
-    @property
-    def slice_material_info_list(self) -> list[dict[str, Any]] | None:
-        material_info_list = self._slice_param.get('paint_infos')
-
-        if not isinstance(material_info_list, list):
-            return None
-
-        return material_info_list
-
-    @property
-    def slice_total_filament_used(self) -> float | None:
-        material_info_list = self.slice_material_info_list
-
-        if material_info_list is None:
-            return None
-
-        total_filament = 0.0
-
-        for material in material_info_list:
-            total_filament += material.get('filament_used', 0.0)
-
-        return total_filament
 
     @property
     def image_url(self) -> str | None:

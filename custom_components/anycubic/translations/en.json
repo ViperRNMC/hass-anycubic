@@ -18,7 +18,7 @@
             },
             "cloud": {
                 "data": {
-                    "user_auth_mode": "Auth mode (web/slicer/android)",
+                    "user_auth_mode": "Auth mode (slicer/android)",
                     "user_token": "Cloud token",
                     "user_device_id": "Device ID (required for android mode)"
                 }
@@ -27,11 +27,148 @@
                 "title": "Reconnect Anycubic Cloud",
                 "description": "Your cloud session expired or MQTT authentication failed. Enter a fresh token to continue.",
                 "data": {
-                    "user_auth_mode": "Auth mode (web/slicer/android)",
+                    "user_auth_mode": "Auth mode (slicer/android)",
                     "user_token": "Cloud token",
                     "user_device_id": "Device ID (required for android mode)"
                 }
             }
+        }
+    },
+    "errors": {
+        "general": {
+            "no_printer_to_print": "No printer to print with.",
+            "no_ace_for_map": "No ACE found for supplied box mapping.",
+            "no_map_for_ace": "Must supply box mapping when using ACE.",
+            "no_ace_for_slot_list": "No ACE found for slot list.",
+            "no_slot_list_for_ace": "Must supply a slot list when using ACE.",
+            "name_change_fail_revert": "Failed to change printer name, reverted to previous.",
+            "name_change_fail_unknown": "Failed to change printer name, unknown error.",
+            "send_order_fail": "Error sending order to Anycubic Cloud, is the printer online? Message: {0}",
+            "file_upload_mismatch": "File upload mis-match, cannot print.",
+            "cloud_file_no_gcodeid": "Cloud file data error, missing gcodeid.",
+            "set_slot_color_invalid": "Must use either `slot_color` or all 3 of `slot_color_red`, `slot_color_green`, `slot_color_blue`",
+            "print_failed": "Print Failed: {0}",
+            "noid_printer": "Printer is missing ID.",
+            "noid_update_info_from_api": "Error in printer update_info_from_api, missing id",
+            "insufficent_ace_units": "Not enough ACE units connected for slot indexes (expected {0})."
+        },
+        "file_not_found": {
+            "in_cloud": "File not found in cloud."
+        },
+        "mqtt_client": {
+            "client_id_missing_email": "Unable to build mqtt_client_id, missing user email.",
+            "pub_key_invalid": "Invalid Anycubic public key for MQTT signing.",
+            "cert_missing": "Unable to load MQTT Certificate, path does not exist.",
+            "cert_ca_missing": "Unable to load MQTT CA Certificate, path does not exist.",
+            "connect_client_missing": "Unexpected error in mqtt_on_connect, missing client.",
+            "sub_printer_status_client_missing": "Unexpected error in mqtt_subscribe_printer_status, missing client.",
+            "sub_printer_key_missing": "Unexpected error in mqtt_add_subscribed_printer, missing printer key."
+        },
+        "api_parsing": {
+            "api_error_rate_limited": "Unexpected response for login, rate limited?",
+            "api_error_server_maintenance": "Unexpected error parsing Anycubic response, server maintenance?",
+            "api_error_user_server_maintenance": "Unexpected error retrieving user info, server maintenance?",
+            "api_error_aws": "Unexpected error parsing AWS response: {0}"
+        },
+        "data_parsing": {
+            "user_cloud_files": "Error parsing user_cloud_files: {0}",
+            "projects": "Error parsing projects: {0}",
+            "local_file_list": "Error parsing local_file_list: {0}",
+            "udisk_file_list": "Error parsing udisk_file_list: {0}",
+            "tools": "Error parsing tools: {0}",
+            "ace_fw_version": "Failed to load ACE FW version from: {0}",
+            "ace": "Failed to load ACE spool info from: {0}",
+            "available_print_speed_modes": "Error parsing available_print_speed_modes: {0}",
+            "project_settings_json": "Error parsing project settings json: {0}\n{1}",
+            "project_settings_unknown": "Unexpected data for project settings: {0}",
+            "project_slice_param_json": "Error parsing project slice_param json: {0}\n{1}",
+            "project_slice_param_unknown": "Unexpected data for project slice_param: {0}",
+            "project_slice_result_json": "Error parsing project slice_result json: {0}\n{1}",
+            "project_slice_result_unknown": "Unexpected data for project slice_result: {0}"
+        },
+        "gcode_parsing": {
+            "invalid_path": "Cannot parse an empty file path.",
+            "invalid_ext": "Can only parse gcode files.",
+            "fetch_failed": "Failed to fetch project gcode data.",
+            "material_list_empty": "Empty material list in gcode file.",
+            "read_fail": "Failed to read gcode file, error: {0}",
+            "byte_decode_fail": "Failed to decode gcode file bytes, error: {0}",
+            "invalid_path_and_bytes": "Cannot read slicer data without file path or bytes.",
+            "parse_meta_fail": "Failed to parse gcode metadata, error: {0}",
+            "empty_paint_info": "Cannot load AMS paint info from gcode.",
+            "empty_used_filament": "Cannot load used filament info from gcode.",
+            "invalid_used_filament": "Not enough used filament info parsed for AMS data.",
+            "slot_material_list_mismatch": "{0} slots supplied but {1} materials found in gcode file."
+        },
+        "auth": {
+            "missing_auth": "Cannot authenticate, anycubic_auth object is missing.",
+            "set_auth_missing_token": "Must supply token",
+            "missing_auth_token": "Missing auth token.",
+            "user_id_md5_tuple_missing_id": "Unable to build user_id_md5_tuple, missing user id.",
+            "access_token_login_failed": "Failed to authenticate with token, server message: {0}"
+        },
+        "auth_token_expired": {
+            "invalid_credentials": "Invalid credentials."
+        },
+        "invalid_value": {
+            "invalid_nozzle_temp": "Invalid target nozzle temperature.",
+            "too_low_nozzle_temp": "Target nozzle temperature is below allowed minimum.",
+            "too_high_nozzle_temp": "Target nozzle temperature is above allowed maximum.",
+            "invalid_hotbed_temp": "Invalid target hotbed temperature.",
+            "too_low_hotbed_temp": "Target hotbed temperature is below allowed minimum.",
+            "too_high_hotbed_temp": "Target hotbed temperature is above allowed maximum.",
+            "invalid_speed_mode": "Invalid print speed mode.",
+            "speed_mode_not_found": "Print speed mode {0} not found in available modes.",
+            "invalid_fan_speed": "Invalid fan speed %.",
+            "too_low_fan_speed": "Fan speed is below allowed minimum.",
+            "too_high_fan_speed": "Fan speed is above allowed maximum."
+        },
+        "loading_props": {
+            "range_nozzle_temp": "Allowed nozzle temperature range is not loaded.",
+            "range_hotbed_temp": "Allowed hotbed temperature range is not loaded.",
+            "speed_modes_not_loaded": "Available print speed modes not loaded."
+        },
+        "cloud_upload": {
+            "missing_path_bytes": "AnycubicCloudUpload created without path or bytes.",
+            "missing_user_store_previous": "Error in set_previous_data_with_user_store, missing user_store",
+            "missing_user_store_current": "Error in set_current_data_with_user_store, missing user_store",
+            "missing_path": "Cannot upload an empty file path.",
+            "path_not_exist": "Cannot upload, path does not exist.",
+            "empty_file_size": "Cannot upload file: {0} - empty file.",
+            "empty_file_bytes": "Cannot upload file: {0} - no data.",
+            "unknown": "Error uploading file: {0} - {1}.",
+            "no_space_available": "Cannot upload file: {0} - no room on cloud.",
+            "not_found_cloud": "Unknown error uploading file: {0} - not found in cloud storage.",
+            "missing_unlock_file_id": "Error in unlock_storage_space, missing lock_file_id",
+            "missing_lock_data": "Error in upload_and_set_cloud_file_id, missing lock_data",
+            "missing_file_bytes": "Error in upload_and_set_cloud_file_id, missing file_bytes",
+            "missing_lock_file_id": "Error in upload_and_set_cloud_file_id, missing lock_file_id",
+            "file_claim_failed": "Failed to claim file upload, response: {0}"
+        },
+        "mqtt_update": {
+            "unknown": "Unknown mqtt update, type: {0}.",
+            "lastwill": "Unknown lastwill state.",
+            "user": "Unknown user update.",
+            "printer_status": "Unknown status/workReport.",
+            "ota_ace": "Unknown ota multiColorBox data.",
+            "ota_printer": "Unknown ota version.",
+            "temperature": "Unknown temperature data.",
+            "fan": "Unknown fan data.",
+            "job_status": "Unknown print status data.",
+            "ace": "Unknown multiColorBox data.",
+            "shelves": "Unknown shelves data.",
+            "file": "Unknown file data.",
+            "peripherals": "Unknown peripherals data."
+        },
+        "system": {
+            "cloud_requires_token": "Cloud mode requires user_token",
+            "cloud_auth_failed": "Cloud authentication failed",
+            "no_cloud_printers": "No cloud printers found for this account",
+            "cloud_mqtt_timeout": "Cloud MQTT connection timed out",
+            "lan_api_contact_error": "Error contacting printer API at {0}: {1}",
+            "lan_api_control_error": "Printer control request failed: {0}",
+            "lan_invalid_broker_url": "Invalid MQTT broker URL: {0}",
+            "time_regex_no_match": "Unable to parse time format - no regex match"
         }
     }
 }

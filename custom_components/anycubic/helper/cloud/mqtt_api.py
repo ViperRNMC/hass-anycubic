@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from paho.mqtt import client as mqtt_client
 
-from .const_mqtt import (
+from ...const import (
     MQTT_HOST,
     MQTT_PORT,
     MQTT_ROOT_TOPIC_PLUS,
@@ -20,8 +20,8 @@ from .const_mqtt import (
     MQTT_ROOT_TOPIC_SERVER,
     MQTT_TIMEOUT,
 )
-from .data_consumable import AnycubicConsumableData
-from .error_strings import ErrorsMQTTClient
+from .mqtt_payload import AnycubicConsumableData
+from .. import ErrorsMQTTClient
 from .exceptions import (
     AnycubicMQTTClientError,
     AnycubicMQTTUnhandledData,
@@ -35,10 +35,10 @@ from .helpers import (
     get_ssl_cert_directory,
     redact_part_from_mqtt_topic,
 )
-from .api_functions import AnycubicAPIFunctions
+from .functions import AnycubicAPIFunctions
 
 if TYPE_CHECKING:
-    from .data_printer import AnycubicPrinter
+    from .printer_model import AnycubicPrinter
 
 
 class AnycubicMQTTAPI(AnycubicAPIFunctions):
@@ -110,11 +110,9 @@ class AnycubicMQTTAPI(AnycubicAPIFunctions):
             return False
 
     def _build_mqtt_printer_subscription(self, printer: AnycubicPrinter) -> list[str]:
-        # topic_slicer = f"{MQTT_ROOT_TOPIC_SLICER}{printer.machine_type}/{printer.key}/#"
         topic_printer = f"{MQTT_ROOT_TOPIC_PRINTER}{printer.machine_type}/{printer.key}/#"
         topic_plus = f"{MQTT_ROOT_TOPIC_PLUS}{printer.machine_type}/{printer.key}/#"
         return list([
-            # topic_slicer,
             topic_printer,
             topic_plus
         ])

@@ -11,7 +11,7 @@ from typing import Any
 from .api import AnycubicAPI
 from .mqtt import AnycubicMQTT
 from ..tbase import AnycubicTransport
-
+from .. import ErrorsSystem
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -52,7 +52,7 @@ class LanTransport(AnycubicTransport):
     async def _init_mqtt(self, data: dict) -> None:
         match = re.match(r"mqtts?://([^:]+):(\d+)", data["broker"])
         if not match:
-            raise ValueError(f"Invalid broker URL: {data['broker']}")
+            raise ValueError(ErrorsSystem.lan_invalid_broker_url.format(data['broker']))
         broker = match.group(1)
         port = int(match.group(2))
         self._mqtt = AnycubicMQTT(

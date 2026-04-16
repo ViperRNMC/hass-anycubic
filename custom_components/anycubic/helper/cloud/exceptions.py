@@ -35,10 +35,6 @@ class AnycubicMQTTClientError(AnycubicAPIError):
     pass
 
 
-class AnycubicCloudUploadError(AnycubicAPIError):
-    pass
-
-
 class AnycubicDataParsingError(AnycubicAPIError):
     pass
 

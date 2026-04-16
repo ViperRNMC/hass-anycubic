@@ -1,9 +1,46 @@
 """Constants for the Anycubic integration.
 
-This module centralises all entity definitions and small configuration
-constants used by the integration. Keep comments and names concise and in
-English for consistency.
+Centralizes all configuration, device, cloud API, and entity constants.
+Organized by functional category for maintainability.
 """
+
+from __future__ import annotations
+
+import re
+from enum import Enum, IntEnum, StrEnum
+
+
+class HTTP_METHODS(Enum):
+    """HTTP method enum for API endpoints."""
+    GET = 1
+    POST = 2
+    PUT = 3
+
+
+class AnycubicAPIEndpoint:
+    """API endpoint with method and path."""
+    __slots__ = ("_method", "_endpoint")
+
+    def __init__(
+        self,
+        method: HTTP_METHODS,
+        endpoint: str,
+    ) -> None:
+        self._method: HTTP_METHODS = method
+        self._endpoint: str = endpoint
+
+    @property
+    def method(self) -> HTTP_METHODS:
+        return self._method
+
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
+# ============================================================================
+# CORE INTEGRATION
+# ============================================================================
+
 DOMAIN = "anycubic"
 MANUFACTURER = "Anycubic"
 MODEL = "Kobra S1"
@@ -12,42 +49,35 @@ MODEL = "Kobra S1"
 CONNECTION_MODE_LAN = "lan"
 CONNECTION_MODE_CLOUD = "cloud"
 
-# Cloud config entry keys
+# ============================================================================
+# CONFIG ENTRY KEYS
+# ============================================================================
+
 CONF_USER_TOKEN = "user_token"
 CONF_USER_AUTH_MODE = "user_auth_mode"
 CONF_USER_DEVICE_ID = "user_device_id"
 CONF_PRINTER_ID = "printer_id"
 CONF_CONNECTION_MODE = "connection_mode"
 
-# Cloud auth mode values stored in config entries
-CLOUD_AUTH_MODE_WEB = "web"
+# Cloud authentication mode values
 CLOUD_AUTH_MODE_SLICER = "slicer"
 CLOUD_AUTH_MODE_ANDROID = "android"
 
-# Device type constants
-DEVICE_TYPE_PRINTER = "printer"
+# ============================================================================
+# DEVICE TYPES & IDENTIFIERS
+# ============================================================================
+
 DEVICE_TYPE_ACE_PRO = "ace_pro"
 DEVICE_TYPE_EXTFILBOX = "extfilbox"
 
-ACE_PRO_DEVICE_ID_FORMAT = "{entry_id}_ace_pro_box_{box_id}"
-EXTFILBOX_DEVICE_ID_FORMAT = "{entry_id}_extfilbox"
-
-# Top-level keys used in coordinator.data
+# Coordinator data keys
 MULTI_COLOR_BOX_KEY = "multiColorBox"
-EXT_FILBOX_KEY = "extfilbox"
 VIDEO_KEY = "video"
 
 # Camera default name
 CAMERA_NAME = "Printer Camera"
 
-# Filament geometry settings
-# Change `FILAMENT_DIAMETER_MM` if you use a different filament diameter
-FILAMENT_DIAMETER_MM = 1.75
-# Typical material density used for estimates (g/cm^3). Common values:
-# PLA ~= 1.24, PETG ~= 1.27, ABS ~= 1.04
-FILAMENT_DENSITY_G_CM3 = 1.24
-
-# Base device info pieces to be composed with per-device identifiers
+# Device base info for composition
 ACE_PRO_DEVICE_BASE = {
     "name": "Ace Pro",
     "manufacturer": MANUFACTURER,
@@ -60,375 +90,318 @@ EXTFILBOX_DEVICE_BASE = {
     "model": "External Filament Rack",
 }
 
-# Light entity definition for the chamber light
-LIGHT_DEFINITION = {
-    "name": "Chamber Light",
-    "key": "chamber_printer",
-    "type_id": 2,
-    "icon": "mdi:lightbulb",
-}
+# ============================================================================
+# FILAMENT & MATERIAL
+# ============================================================================
 
-# Button entities for homing and print control
-BUTTON_DEFINITIONS = [
-    # Homing buttons
-    {
-        "name": "Home All",
-        "key": "home_all",
-        "type": "axis",
-        "action": "move",
-        "axis": 5,
-        "icon": "mdi:axis-arrow",
-    },
-    {
-        "name": "Home XY",
-        "key": "home_xy",
-        "type": "axis",
-        "action": "move",
-        "axis": 4,
-        "icon": "mdi:axis-arrow",
-    },
-    {
-        "name": "Home Z",
-        "key": "home_z",
-        "type": "axis",
-        "action": "move",
-        "axis": 3,
-        "icon": "mdi:axis-arrow",
-    },
-    # Print control buttons
-    {
-        "name": "Print Stop",
-        "key": "print_stop",
-        "type": "print",
-        "action": "stop",
-        "icon": "mdi:stop",
-    },
-    # Separate pause and resume buttons
-    {
-        "name": "Print Pause",
-        "key": "print_pause",
-        "type": "print",
-        "action": "pause",
-        "icon": "mdi:pause",
-    },
-    {
-        "name": "Print Resume",
-        "key": "print_resume",
-        "type": "print",
-        "action": "resume",
-        "icon": "mdi:play",
-    },
-    {
-        "name": "Nozzle Heater Off",
-        "key": "nozzle_heater_off",
-        "type": "temperature",
-        "action": "setNozzleTemp",
-        "data": {"target_nozzle_temp": 0},
-        "icon": "mdi:printer-3d-nozzle-off",
-    },
-    {
-        "name": "Bed Heater Off",
-        "key": "bed_heater_off",
-        "type": "temperature",
-        "action": "setHotbedTemp",
-        "data": {"target_hotbed_temp": 0},
-        "icon": "mdi:heating-coil",
-    },
-]
+FILAMENT_DIAMETER_MM = 1.75
+FILAMENT_DENSITY_G_CM3 = 1.24
 
-# Select definitions (print speed modes)
-SELECT_DEFINITIONS = [
-    {
-        "name": "Speed",
-        "key": "print_speed_mode",
-        "icon": "mdi:run",
-        "options": ["silent", "standard", "sport"],
-        # backend value mapping (index or code expected by device)
-        # Note: device uses inverted codes for silent/standard on some firmware
-        # Swap 0/1 so selecting 'silent' sends the value the device expects
-        "value_map": {"silent": 1, "standard": 0, "sport": 2},
-    }
-]
-
-# Switch entities for Ace Pro features
-SWITCH_DEFINITIONS = [
-    {
-        "name": "Drying",
-        "key": "ace_pro_drying",
-        "type": "multiColorBox",
-        "action_on": "setDry",
-        "action_off": "setDry",
-        "data_template_on": {"multi_color_box": [{"id": "{box_id}", "drying_status": {"status": 1, "target_temp": "{target_temp}", "duration": "{duration}"}}]},
-        "data_template_off": {"multi_color_box": [{"id": "{box_id}", "drying_status": {"status": 0}}]},
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-    },
-    {
-        "name": "Auto Feed",
-        "key": "ace_pro_auto_feed",
-        "type": "multiColorBox",
-        "action_on": "setAutoFeed",
-        "action_off": "setAutoFeed",
-        "data_template_on": {"multi_color_box": [{"id": "{box_id}", "auto_feed": 1}]},
-        "data_template_off": {"multi_color_box": [{"id": "{box_id}", "auto_feed": 0}]},
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-    },
-]
-
-# Fan entities (definitions drive the single generic FanEntity)
-FAN_DEFINITIONS = [
-    {
-        "name": "Main Fan",
-        "key": "main",
-        "icon": "mdi:fan",
-        "data_key": "fan_speed_pct",
-    },
-    {
-        "name": "Aux Fan",
-        "key": "aux",
-        "icon": "mdi:fan",
-        "data_key": "aux_fan_speed_pct",
-    },
-    {
-        "name": "Box Fan",
-        "key": "box",
-        "icon": "mdi:fan",
-        "data_key": "box_fan_level",
-    },
-]
-
-# Number entities for target temperatures (definitions drive the single generic NumberEntity)
-NUMBER_DEFINITIONS = [
-    {
-        "name": "Target Nozzle Temperature",
-        "key": "target_nozzle_temp",
-        "data_key": "target_nozzle_temp",
-        "min": 0,
-        "max": 320,
-        "icon": "mdi:printer-3d-nozzle",
-    },
-    {
-        "name": "Target Hotbed Temperature",
-        "key": "target_hotbed_temp",
-        "data_key": "target_hotbed_temp",
-        "min": 0,
-        "max": 120,
-        "icon": "mdi:heating-coil",
-    },
-    # Ace Pro box drying controls: template definitions. These will be
-    # expanded per detected box by the coordinator (placeholders like
-    # {box_id} are replaced with the real box id at runtime).
-    {
-        "name": "Drying Target",
-        "key": "ace_pro_drying_target",
-        "min": 35,
-        "max": 55,
-        "unit": "°C",
-        "kind": "drying_target",
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-    },
-    {
-        "name": "Drying Duration",
-        "key": "ace_pro_drying_duration",
-        "min": 1,
-        "max": 1440,
-        "unit": "min",
-        "kind": "drying_duration",
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-    },
-]
-
-# Sensor entity definitions
-SENSOR_DEFINITIONS = [
-    {
-        "name": "Printer Info",
-        "key": "printer_info",
-        "data_path": ("info", "data", "state"),
-        "icon": "mdi:information-outline",
-    },
-    {
-        "name": "Nozzle Temperature",
-        "key": "nozzle_temp",
-        "data_path": ("tempature", "data", "curr_nozzle_temp"),
-        "unit": "°C",
-        "icon": "mdi:thermometer",
-    },
-    {
-        "name": "Hotbed Temperature",
-        "key": "hotbed_temp",
-        "data_path": ("tempature", "data", "curr_hotbed_temp"),
-        "unit": "°C",
-        "icon": "mdi:thermometer",
-    },
-    {
-        "name": "Print Status",
-        "key": "print_status",
-        "data_path": ("info", "data", "project", "state"),
-        "icon": "mdi:printer-3d",
-    },
-    {
-        "name": "Print Progress",
-        "key": "print_progress",
-        "data_path": ("info", "data", "project", "progress"),
-        "unit": "%",
-        "icon": "mdi:progress-clock",
-    },
-    {
-        "name": "Print Current Layer",
-        "key": "print_curr_layer",
-        "data_path": ("print", "data", "curr_layer"),
-        "icon": "mdi:layers",
-    },
-    {
-        "name": "Print Filename",
-        "key": "print_filename",
-        "data_path": ("print", "data", "filename"),
-        "icon": "mdi:file-document",
-    },
-    {
-        "name": "Print Time",
-        "key": "print_time",
-        "data_path": ("print", "data", "print_time"),
-        "icon": "mdi:timer",
-        "formatter": "_minutes_to_hhmm",
-    },
-    {
-        "name": "Print Remaining Time",
-        "key": "print_remain_time",
-        "data_path": ("print", "data", "remain_time"),
-        "icon": "mdi:timer-off",
-        "formatter": "_minutes_to_hhmm",
-    },
-    {
-        "name": "Print ETA",
-        "key": "job_eta",
-        "data_path": ("print", "data", "remain_time"),
-        "icon": "mdi:timer-outline",
-        "formatter": "_minutes_to_hhmm",
-    },
-    {
-        "name": "Print Z Thickness",
-        "key": "job_z_thickness",
-        "data_path": ("print", "data", "z_thickness"),
-        "unit": "mm",
-        "icon": "mdi:axis-z-arrow",
-    },
-    {
-        "name": "Print Model Name",
-        "key": "print_model_name",
-        "data_path": ("print", "data", "source_info", "models", 0, "name"),
-        "icon": "mdi:file-outline",
-    },
-    {
-        "name": "Print Supplies Usage",
-        "key": "print_supplies_usage",
-        "data_path": ("print", "data", "supplies_usage"),
-        "icon": "mdi:cube-scan",
-        "unit": "g",
-    },
-    {
-        "name": "Print Total Layers",
-        "key": "print_total_layers",
-        "data_path": ("print", "data", "total_layers"),
-        "icon": "mdi:layers",
-    },
-    # Ace Pro box sensors (templates expanded per detected box)
-    {
-        "name": "Temperature",
-        "key": "{box_id}_temp",
-        "data_path": (MULTI_COLOR_BOX_KEY, "data", "multi_color_box"),
-        "data_field": "temp",
-        "unit": "°C",
-        "icon": "mdi:thermometer",
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-        },
-        {
-        "name": "Loaded",
-        "key": "ace_pro_box_{box_id}_loaded",
-        "data_path": (MULTI_COLOR_BOX_KEY, "data", "multi_color_box"),
-        "data_field": "loaded_slot",
-        "icon": "mdi:folder-arrow-right",
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-        },
-        {
-        "name": "Slot {slot_index}",
-        "key": "ace_pro_box_{box_id}_slot_{slot_index}",
-        "data_path": (MULTI_COLOR_BOX_KEY, "data", "multi_color_box"),
-        "slot_index": "{slot_index}",
-        "icon": "mdi:tray",
-        "device_type": DEVICE_TYPE_ACE_PRO,
-        "per_box": True,
-        "per_slot": True,
-        },
-    # External Filament Rack 
-    {
-        "name": "Loaded",
-        "key": "extfilbox_loaded",
-        "data_path": (EXT_FILBOX_KEY, "data", "loaded"),
-        "icon": "mdi:package-variant-closed",
-        "device_type": DEVICE_TYPE_EXTFILBOX,
-    },
-    {
-        "name": "Slot",
-        "key": "extfilbox_slot",
-        "data_path": (EXT_FILBOX_KEY, "data", "multi_color_box", 0),
-        "icon": "mdi:tray",
-        "device_type": DEVICE_TYPE_EXTFILBOX,
-        "per_box": False,
-        "per_slot": False,
-    },
-]
+# ============================================================================
+# CLOUD API ENDPOINTS
+# ============================================================================
 
 
-# Binary sensor entity definitions
-BINARY_DEFINITIONS = [
-    {
-        "name": "Printer Online",
-        "key": "printer_online",
-        "type": "printer_online",
-        "device_class": "connectivity",
-        "entity_category": "diagnostic",
-    },
-    {
-        "name": "Print Failed",
-        "key": "job_failed",
-        "type": "job_failed",
-        "device_class": "problem",
-        "entity_category": "diagnostic",
-    },
-    {
-        "name": "Print Problem",
-        "key": "print_problem",
-        "type": "print_problem",
-        "device_class": "problem",
-        "entity_category": "diagnostic",
-    },
-    {
-        "name": "Nozzle Heating",
-        "key": "nozzle_heating",
-        "type": "nozzle_heating",
-        "device_class": "heat",
-        "icon": "mdi:printer-3d-nozzle-heat",
-    },
-    {
-        "name": "Bed Heating",
-        "key": "bed_heating",
-        "type": "bed_heating",
-        "device_class": "heat",
-    },
-]
+class API_ENDPOINT:
+    user_store = AnycubicAPIEndpoint(HTTP_METHODS.POST, "/work/index/getUserStore")
+    lock_storage_space = AnycubicAPIEndpoint(
+        HTTP_METHODS.POST, "/v2/cloud_storage/lockStorageSpace"
+    )
+    unlock_storage_space = AnycubicAPIEndpoint(
+        HTTP_METHODS.POST, "/v2/cloud_storage/unlockStorageSpace"
+    )
+    new_file_upload = AnycubicAPIEndpoint(
+        HTTP_METHODS.POST, "/v2/profile/newUploadFile"
+    )
+    delete_cloud_file = AnycubicAPIEndpoint(
+        HTTP_METHODS.POST, "/work/index/delFiles"
+    )
+    user_files = AnycubicAPIEndpoint(HTTP_METHODS.POST, "/work/index/files")
+    user_info = AnycubicAPIEndpoint(HTTP_METHODS.GET, "/user/profile/userInfo")
+    auth_sig_token = AnycubicAPIEndpoint(HTTP_METHODS.POST, "/v3/public/loginWithAccessToken")
+    printer_info = AnycubicAPIEndpoint(HTTP_METHODS.GET, "/v2/printer/info")
+    printer_get_printers = AnycubicAPIEndpoint(
+        HTTP_METHODS.GET, "/work/printer/getPrinters"
+    )
+    project_info = AnycubicAPIEndpoint(HTTP_METHODS.GET, "/v2/project/info")
+    project_get_projects = AnycubicAPIEndpoint(
+        HTTP_METHODS.GET, "/work/project/getProjects"
+    )
+    project_gcode_info_fdm = AnycubicAPIEndpoint(
+        HTTP_METHODS.GET, "/work/gcode/infoFdm"
+    )
+    send_order = AnycubicAPIEndpoint(HTTP_METHODS.POST, "/work/operation/sendOrder")
 
-# Short, local translation table for common non-ASCII device messages.
-# Keep this small and local to avoid network calls; add entries as needed.
+
+# ============================================================================
+# CLOUD API ENUMS
+# ============================================================================
+
+
+class AnycubicFeedType(IntEnum):
+    Feed = 1
+    Retract = 2
+    Finish = 3
+
+
+class AnycubicPrintStatus(IntEnum):
+    Printing = 1
+    Complete = 2
+    Cancelled = 3
+    Downloading = 4
+    Checking = 5
+    Preheating = 6
+    Slicing = 7
+
+
+class AnycubicOrderID(IntEnum):
+    START_PRINT = 1
+    PAUSE_PRINT = 2
+    RESUME_PRINT = 3
+    STOP_PRINT = 4
+    PRINT_SETTINGS = 6
+    IGNORE = 11
+    DETECT = 12
+    STOP_PRINT_FORCE = 44
+    LIST_UDISK_FILES = 101
+    DELETE_UDISK_FILE = 102
+    LIST_LOCAL_FILES = 103
+    DELETE_LOCAL_FILE = 104
+    MOVE_AXLE = 201
+    MOVE_AXLE_TO_COORDINATES = 202
+    START_EXPOSURE = 301
+    CANCEL_EXPOSURE = 302
+    START_RESIDUAL = 501
+    CANCEL_RESIDUAL = 502
+    SET_DEVICE_SELF_TEST = 601
+    GET_DEVICE_SELF_TEST = 602
+    SET_AUTO_OPERATION = 701
+    GET_AUTO_OPERATION = 702
+    RESET_RELEASE_FILM = 801
+    GET_RELEASE_FILM = 802
+    SET_PRINT_STATUS_FREE = 901
+    CAMERA_CLOSE = 1002
+    MULTI_COLOR_BOX_DRY = 1207
+    FEED_FILAMENT = 1208
+    FEED_FILAMENT_FINISH = 1209
+    MULTI_COLOR_BOX_REFRESH_SLOT = 1210
+    MULTI_COLOR_BOX_SET_SLOT = 1211
+    MULTI_COLOR_BOX_AUTO_FEED = 1212
+    MOVE_AXLE_TURN_OFF = 1213
+    FILAMENT_CONTROL = 1215
+    FEED_RESIN = 1224
+    M7_AUTO_OPERATION = 1225
+    CYCLIC_CLEANING = 1226
+    SET_AUTO_FEED_INFO = 1227
+    GET_M7_AUTO_OPERATION = 1228
+    EXTFILBOX = 1229
+    GET_EXTFILBOX_INFO = 1230
+    QUERY_PERIPHERALS = 1231
+    GET_LIGHT_STATUS = 1232
+    SET_LIGHT_STATUS = 1233
+
+
+class AnycubicFunctionID(IntEnum):
+    AXLE_MOVEMENT = 1
+    FILE_MANAGER = 2
+    EXPOSURE_TEST = 3
+    LCD_PEER_VIDEO = 7
+    FDM_AXIS_MOVE = 13
+    FDM_PEER_VIDEO = 22
+    DEVICE_STARTUP_SELF_TEST = 26
+    PRINT_STARTUP_SELF_TEST = 27
+    AUTOMATIC_OPERATION = 28
+    RESIDUE_CLEAN = 29
+    NOVICE_GUIDE = 30
+    RELEASE_FILM = 31
+    TASK_MODE = 32
+    LCD_INTELLIGENT_MATERIALS_BOX = 33
+    LCD_AUTO_OUT_IN_MATERIALS = 34
+    M7PRO_AUTOMATIC_OPERATION = 35
+    AI_DETECTION = 36
+    AUTO_LEVELER = 37
+    VIBRATION_COMPENSATION = 38
+    TIME_LAPSE = 39
+    VIDEO_LIGHT = 40
+    BOX_LIGHT = 41
+    MULTI_COLOR_BOX = 2006
+
+
+class AnycubicPrinterMaterialType(StrEnum):
+    FILAMENT = "Filament"
+    RESIN = "Resin"
+
+
+class AnycubicServerMessage:
+    FILE_NOT_FOUND = "No file found"
+
+
+# ============================================================================
+# MQTT CONFIGURATION
+# ============================================================================
+
+MQTT_HOST = "mqtt-universe.anycubic.com"
+MQTT_PORT = 8883
+MQTT_TIMEOUT = 60 * 20
+
+# MQTT topic hierarchy
+MQTT_TOPIC_PREFIX = "anycubic/anycubicCloud/v1"
+MQTT_ROOT_TOPIC_PLUS = f"{MQTT_TOPIC_PREFIX}/+/public/"
+MQTT_ROOT_TOPIC_PRINTER = f"{MQTT_TOPIC_PREFIX}/printer/app/"
+MQTT_ROOT_TOPIC_PUBLISH_PRINTER = f"{MQTT_TOPIC_PREFIX}/printer/public/"
+MQTT_ROOT_TOPIC_PUBLISH_PRINTER_SLICER = f"{MQTT_TOPIC_PREFIX}/pc/printer/"
+MQTT_ROOT_TOPIC_SERVER = f"{MQTT_TOPIC_PREFIX}/server/app/"
+
+# ============================================================================
+# CLOUD API CONFIGURATION
+# ============================================================================
+
+BASE_DOMAIN = "cloud-universe.anycubic.com"
+API_DOMAIN = f"https://{BASE_DOMAIN}/"
+AUTH_DOMAIN = "uc.makeronline.com"
+PUBLIC_API_ENDPOINT = "p/p/workbench/api"
+PROJECT_IMAGE_URL_BASE = "https://workbentch.s3.us-east-2.amazonaws.com/"
+
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 "
+    "Safari/537.36"
+)
+
+# ============================================================================
+# CLOUD AUTHENTICATION CREDENTIALS
+# ============================================================================
+
+AC_KNOWN_CID_APP = "ca4c8416cced85a1dc02"
+AC_KNOWN_AID = "f9b3528877c94d5c9c5af32245db46ef"
+AC_KNOWN_VID_APP = "1.4.8"
+AC_KNOWN_VID_SLICER_NEXT = "1.3.9.4"
+AC_KNOWN_SEC = "0cf75926606049a3937f56b0373b99fb"
+
+ACCESS_TOKEN_LOGIN_RETRIES = 2
+ACCESS_TOKEN_LOGIN_RETRY_INTERVAL = 2
+
+# ============================================================================
+# API & MQTT LIMITS
+# ============================================================================
+
+MAX_PROJECT_LIST_RESULTS = 2000
+MAX_PROJECT_IMAGE_SEARCH_COUNT = 200
+MAX_API_FETCH_TIME_WARN = 20
+WARN_INTERVAL_API_DURATION = 60 * 10
+
+# ============================================================================
+# GCODE PATTERNS
+# ============================================================================
+
+REX_GCODE_EXT = re.compile(r"\.gcode$")
+
+# ============================================================================
+# ENTITY DEFINITIONS & TRANSLATIONS
+# ============================================================================
+
+# Entity definitions - intentionally kept in separate flat module
+from .definitions import (  # noqa: E402, F401
+    BINARY_DEFINITIONS,
+    BUTTON_DEFINITIONS,
+    FAN_DEFINITIONS,
+    LIGHT_DEFINITION,
+    NUMBER_DEFINITIONS,
+    SELECT_DEFINITIONS,
+    SENSOR_DEFINITIONS,
+    SWITCH_DEFINITIONS,
+)
+
+# Local translation table for common device messages
 MSG_TRANSLATIONS = {
-    # Chinese -> English
     "耗材不足": "Insufficient supplies",
     "设备忙": "Device busy",
     "温度过高": "Temperature too high",
-    "用户发起": "User initiated"
+    "用户发起": "User initiated",
 }
+
+# ============================================================================
+# PUBLIC EXPORTS
+# ============================================================================
+
+__all__ = [
+    # Core
+    "DOMAIN",
+    "MANUFACTURER",
+    "MODEL",
+    # Connection
+    "CONNECTION_MODE_LAN",
+    "CONNECTION_MODE_CLOUD",
+    # Config keys
+    "CONF_USER_TOKEN",
+    "CONF_USER_AUTH_MODE",
+    "CONF_USER_DEVICE_ID",
+    "CONF_PRINTER_ID",
+    "CONF_CONNECTION_MODE",
+    # Auth modes
+    "CLOUD_AUTH_MODE_SLICER",
+    "CLOUD_AUTH_MODE_ANDROID",
+    # Device types
+    "DEVICE_TYPE_ACE_PRO",
+    "DEVICE_TYPE_EXTFILBOX",
+    # Coordinator keys
+    "MULTI_COLOR_BOX_KEY",
+    "VIDEO_KEY",
+    # Camera
+    "CAMERA_NAME",
+    # Device base info
+    "ACE_PRO_DEVICE_BASE",
+    "EXTFILBOX_DEVICE_BASE",
+    # Filament
+    "FILAMENT_DIAMETER_MM",
+    "FILAMENT_DENSITY_G_CM3",
+    # Cloud API endpoints
+    "API_ENDPOINT",
+    # Enums
+    "AnycubicFeedType",
+    "AnycubicPrintStatus",
+    "AnycubicOrderID",
+    "AnycubicFunctionID",
+    "AnycubicPrinterMaterialType",
+    "AnycubicServerMessage",
+    # MQTT
+    "MQTT_HOST",
+    "MQTT_PORT",
+    "MQTT_TIMEOUT",
+    "MQTT_TOPIC_PREFIX",
+    "MQTT_ROOT_TOPIC_PLUS",
+    "MQTT_ROOT_TOPIC_PRINTER",
+    "MQTT_ROOT_TOPIC_PUBLISH_PRINTER",
+    "MQTT_ROOT_TOPIC_PUBLISH_PRINTER_SLICER",
+    "MQTT_ROOT_TOPIC_SERVER",
+    # Cloud API
+    "BASE_DOMAIN",
+    "API_DOMAIN",
+    "AUTH_DOMAIN",
+    "PUBLIC_API_ENDPOINT",
+    "PROJECT_IMAGE_URL_BASE",
+    "DEFAULT_USER_AGENT",
+    # Credentials
+    "AC_KNOWN_CID_APP",
+    "AC_KNOWN_AID",
+    "AC_KNOWN_VID_APP",
+    "AC_KNOWN_VID_SLICER_NEXT",
+    "AC_KNOWN_SEC",
+    # Limits
+    "MAX_PROJECT_LIST_RESULTS",
+    "MAX_PROJECT_IMAGE_SEARCH_COUNT",
+    "MAX_API_FETCH_TIME_WARN",
+    "WARN_INTERVAL_API_DURATION",
+    # Patterns
+    "REX_GCODE_EXT",
+    # Definitions & translations
+    "BINARY_DEFINITIONS",
+    "BUTTON_DEFINITIONS",
+    "FAN_DEFINITIONS",
+    "LIGHT_DEFINITION",
+    "NUMBER_DEFINITIONS",
+    "SELECT_DEFINITIONS",
+    "SENSOR_DEFINITIONS",
+    "SWITCH_DEFINITIONS",
+    "MSG_TRANSLATIONS",
+]

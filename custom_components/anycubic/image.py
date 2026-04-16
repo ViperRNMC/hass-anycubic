@@ -20,10 +20,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     if coordinator is None:
         _LOGGER.error("Coordinator not found for image setup: %s", entry.entry_id)
         return
-    async_add_entities([AnycubicJobPreviewImage(coordinator)])
+    async_add_entities([AnycubicImageEntity(coordinator)])
 
 
-class AnycubicJobPreviewImage(CoordinatorEntity, ImageEntity):
+class AnycubicImageEntity(CoordinatorEntity, ImageEntity):
     """Job preview image based on thumbnail data in coordinator payloads."""
 
     _attr_content_type = "image/jpeg"

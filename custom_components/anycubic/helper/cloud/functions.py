@@ -7,31 +7,26 @@ from typing import (
     overload,
 )
 
-from .const_api_endpoints import API_ENDPOINT
-from .const_values import (
+from ...const import (
+    API_ENDPOINT,
     MAX_PROJECT_IMAGE_SEARCH_COUNT,
     MAX_PROJECT_LIST_RESULTS,
     AnycubicServerMessage,
-)
-from .const_enums import (
     AnycubicFeedType,
     AnycubicOrderID,
     AnycubicPrintStatus,
 )
-from .data_files import AnycubicCloudFile, AnycubicCloudStore
-from .data_orders import (
+from .order_requests import (
     AnycubicBaseOrderRequest,
-    AnycubicBaseProjectOrderRequest,
     AnycubicProjectCtrlOrderRequest,
     AnycubicProjectOrderRequest,
 )
-from .data_printer import AnycubicPrinter
-from .data_printer_properties import AnycubicMaterialColor
-from .data_printing_settings import AnycubicPrintingSettings
-from .data_project import AnycubicProject
-from .error_strings import (
+from .printer_model import AnycubicPrinter
+from .printer_components import AnycubicMaterialColor
+from .print_models import AnycubicPrintingSettings
+from .project_model import AnycubicProject
+from .. import (
     ErrorsAPIParsing,
-    ErrorsCloudUpload,
     ErrorsDataParsing,
     ErrorsFileNotFound,
     ErrorsGeneral,
@@ -39,198 +34,13 @@ from .error_strings import (
 from .exceptions import (
     AnycubicAPIError,
     AnycubicAPIParsingError,
-    AnycubicCloudUploadError,
     AnycubicDataParsingError,
     AnycubicFileNotFoundError,
 )
-from .api_base import AnycubicAPIBase
+from .api import AnycubicAPIBase
 
 
 class AnycubicAPIFunctions(AnycubicAPIBase):
-
-    #
-    #
-    # General API Calls
-    # ------------------------------------------
-
-    async def _lock_storage_space(
-        self,
-        file_size: int,
-        file_name: str | None,
-        is_temp_file: int | bool = 0,
-        raw_data: bool = False,
-    ) -> dict[str, Any]:
-        params = {
-            'size': file_size,
-            'name': file_name,
-            'is_temp_file': int(is_temp_file),
-        }
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.lock_storage_space, params=params)
-        if raw_data:
-            return resp
-
-        data: dict[str, Any] = resp['data']
-
-        return data
-
-    async def _unlock_storage_space(
-        self,
-        file_id: int,
-        is_delete_cos: int | bool = 0,
-        raw_data: bool = False,
-    ) -> dict[str, Any] | str:
-        params = {
-            'id': file_id,
-            'is_delete_cos': int(is_delete_cos),
-        }
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.unlock_storage_space, params=params)
-        if raw_data:
-            return resp
-
-        data: dict[str, Any] = resp['data']
-
-        return data
-
-    @overload
-    async def _claim_file_upload_from_aws(
-        self,
-        file_id: int,
-    ) -> int: ...
-
-    @overload
-    async def _claim_file_upload_from_aws(
-        self,
-        file_id: int,
-        raw_data: Literal[True] = ...,
-    ) -> dict[str, Any]: ...
-
-    async def _claim_file_upload_from_aws(
-        self,
-        file_id: int,
-        raw_data: bool = False,
-    ) -> dict[str, Any] | int:
-        params = {
-            'user_lock_space_id': file_id,
-        }
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.new_file_upload, params=params)
-        if raw_data:
-            return resp
-
-        if (
-            not resp or (
-                'data' not in resp
-                or not resp['data']
-                or 'id' not in resp['data']
-            )
-        ):
-            raise AnycubicCloudUploadError(
-                ErrorsCloudUpload.file_claim_failed.format(resp)
-            )
-
-        data = resp['data']
-
-        return int(data['id'])
-
-    @overload
-    async def get_user_cloud_store(
-        self,
-    ) -> AnycubicCloudStore | None: ...
-
-    @overload
-    async def get_user_cloud_store(
-        self,
-        raw_data: Literal[True] = ...,
-    ) -> dict[str, Any]: ...
-
-    async def get_user_cloud_store(
-        self,
-        raw_data: bool = False,
-    ) -> AnycubicCloudStore | None | dict[str, Any]:
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.user_store)
-        if raw_data:
-            return resp
-
-        data = resp['data']
-
-        return AnycubicCloudStore.from_json(data)
-
-    @overload
-    async def get_user_cloud_files(
-        self,
-        printable: int | None = None,
-        machine_type: int | None = None,
-        page: int = 1,
-        limit: int = 10,
-    ) -> list[AnycubicCloudFile] | None: ...
-
-    @overload
-    async def get_user_cloud_files(
-        self,
-        printable: int | None = None,
-        machine_type: int | None = None,
-        page: int = 1,
-        limit: int = 10,
-        raw_data: Literal[True] = ...,
-    ) -> dict[str, Any]: ...
-
-    async def get_user_cloud_files(
-        self,
-        printable: int | None = None,
-        machine_type: int | None = None,
-        page: int = 1,
-        limit: int = 10,
-        raw_data: bool = False,
-    ) -> list[AnycubicCloudFile] | None | dict[str, Any]:
-        params = {
-            'page': page,
-            'limit': limit,
-        }
-        if printable is not None:
-            params['printable'] = int(printable)
-        if machine_type is not None:
-            params['machine_type'] = int(machine_type)
-
-        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.user_files, params=params)
-        if raw_data:
-            return resp
-
-        data = resp['data']
-
-        if not data:
-            return list()
-
-        file_list = list()
-
-        for x in data:
-            file = AnycubicCloudFile.from_json(x)
-            if file:
-                file_list.append(file)
-            else:
-                raise AnycubicDataParsingError(ErrorsDataParsing.user_cloud_files.format(data))
-
-        return file_list
-
-    async def get_user_cloud_files_data_object(
-        self,
-        printable: int | None = None,
-        machine_type: int | None = None,
-        page: int = 1,
-        limit: int = 10,
-    ) -> list[dict[str, Any]] | None:
-        user_files = await self.get_user_cloud_files(
-            printable=printable,
-            machine_type=machine_type,
-            page=page,
-            limit=limit,
-        )
-
-        if not user_files or len(user_files) < 1:
-            return None
-
-        file_list = list([
-            file.data_object for file in user_files
-        ])
-        return file_list
 
     @overload
     async def fetch_project_gcode_info_fdm(

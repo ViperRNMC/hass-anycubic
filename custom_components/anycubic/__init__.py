@@ -6,14 +6,13 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import CONNECTION_MODE_CLOUD, CONNECTION_MODE_LAN, CONF_CONNECTION_MODE, DOMAIN
 from .coordinator import async_create_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [
+PLATFORMS_LAN = [
     "sensor",
-    "update",
     "image",
     "switch",
     "select",
@@ -22,7 +21,21 @@ PLATFORMS = [
     "light",
     "number",
     "binary_sensor",
-    "camera",
+]
+
+# Temporary: camera platform is disabled until stream handling is fixed.
+PLATFORMS_LAN_UNLOAD = [*PLATFORMS_LAN, "camera"]
+
+PLATFORMS_CLOUD = [
+    "sensor",
+    "image",
+    "switch",
+    "select",
+    "button",
+    "fan",
+    "light",
+    "number",
+    "binary_sensor",
 ]
 
 
@@ -33,7 +46,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = await async_create_coordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
+    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
     return True
 
 
@@ -46,5 +61,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.debug("Coordinator shutdown failed during unload", exc_info=True)
 
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
+    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN_UNLOAD
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     return unload_ok

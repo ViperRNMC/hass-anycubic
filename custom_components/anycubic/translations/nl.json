@@ -1,0 +1,174 @@
+{
+    "config": {
+        "error": {
+            "invalid_auth": "Ongeldige cloud-inloggegevens",
+            "cannot_connect": "Verbinding mislukt",
+            "unknown": "Onverwachte fout"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "connection_mode": "Verbindingsmodus"
+                }
+            },
+            "lan": {
+                "data": {
+                    "host": "Host"
+                }
+            },
+            "cloud": {
+                "data": {
+                    "user_auth_mode": "Auth-modus (slicer/android)",
+                    "user_token": "Cloud-token",
+                    "user_device_id": "Apparaat-ID (vereist voor android-modus)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Anycubic Cloud opnieuw verbinden",
+                "description": "Je cloudsessie is verlopen of MQTT-authenticatie is mislukt. Voer een nieuw token in om door te gaan.",
+                "data": {
+                    "user_auth_mode": "Auth-modus (slicer/android)",
+                    "user_token": "Cloud-token",
+                    "user_device_id": "Apparaat-ID (vereist voor android-modus)"
+                }
+            }
+        }
+    },
+    "errors": {
+        "general": {
+            "no_printer_to_print": "Geen printer beschikbaar om mee te printen.",
+            "no_ace_for_map": "Geen ACE gevonden voor de opgegeven box-mapping.",
+            "no_map_for_ace": "Je moet box-mapping opgeven bij gebruik van ACE.",
+            "no_ace_for_slot_list": "Geen ACE gevonden voor de slotlijst.",
+            "no_slot_list_for_ace": "Je moet een slotlijst opgeven bij gebruik van ACE.",
+            "name_change_fail_revert": "Wijzigen van printernaam mislukt, teruggezet naar vorige waarde.",
+            "name_change_fail_unknown": "Wijzigen van printernaam mislukt, onbekende fout.",
+            "send_order_fail": "Fout bij verzenden van opdracht naar Anycubic Cloud, staat de printer online? Bericht: {0}",
+            "file_upload_mismatch": "Bestandsupload komt niet overeen, kan niet printen.",
+            "cloud_file_no_gcodeid": "Cloud-bestandsfout, ontbrekende gcodeid.",
+            "set_slot_color_invalid": "Gebruik ofwel `slot_color` of alle 3: `slot_color_red`, `slot_color_green`, `slot_color_blue`",
+            "print_failed": "Print mislukt: {0}",
+            "noid_printer": "Printer-ID ontbreekt.",
+            "noid_update_info_from_api": "Fout in printer update_info_from_api, id ontbreekt",
+            "insufficent_ace_units": "Onvoldoende verbonden ACE-units voor slot-indexen (verwacht {0})."
+        },
+        "file_not_found": {
+            "in_cloud": "Bestand niet gevonden in de cloud."
+        },
+        "mqtt_client": {
+            "client_id_missing_email": "Kan mqtt_client_id niet opbouwen, e-mailadres gebruiker ontbreekt.",
+            "pub_key_invalid": "Ongeldige Anycubic publieke sleutel voor MQTT-ondertekening.",
+            "cert_missing": "Kan MQTT-certificaat niet laden, pad bestaat niet.",
+            "cert_ca_missing": "Kan MQTT-CA-certificaat niet laden, pad bestaat niet.",
+            "connect_client_missing": "Onverwachte fout in mqtt_on_connect, client ontbreekt.",
+            "sub_printer_status_client_missing": "Onverwachte fout in mqtt_subscribe_printer_status, client ontbreekt.",
+            "sub_printer_key_missing": "Onverwachte fout in mqtt_add_subscribed_printer, printersleutel ontbreekt."
+        },
+        "api_parsing": {
+            "api_error_rate_limited": "Onverwachte respons bij inloggen, mogelijk rate-limited?",
+            "api_error_server_maintenance": "Onverwachte fout bij verwerken van Anycubic-respons, serveronderhoud?",
+            "api_error_user_server_maintenance": "Onverwachte fout bij ophalen gebruikersinfo, serveronderhoud?",
+            "api_error_aws": "Onverwachte fout bij verwerken van AWS-respons: {0}"
+        },
+        "data_parsing": {
+            "user_cloud_files": "Fout bij verwerken user_cloud_files: {0}",
+            "projects": "Fout bij verwerken projects: {0}",
+            "local_file_list": "Fout bij verwerken local_file_list: {0}",
+            "udisk_file_list": "Fout bij verwerken udisk_file_list: {0}",
+            "tools": "Fout bij verwerken tools: {0}",
+            "ace_fw_version": "Laden van ACE-firmwareversie mislukt uit: {0}",
+            "ace": "Laden van ACE-spoelinfo mislukt uit: {0}",
+            "available_print_speed_modes": "Fout bij verwerken available_print_speed_modes: {0}",
+            "project_settings_json": "Fout bij verwerken projectinstellingen json: {0}\n{1}",
+            "project_settings_unknown": "Onverwachte data voor projectinstellingen: {0}",
+            "project_slice_param_json": "Fout bij verwerken project slice_param json: {0}\n{1}",
+            "project_slice_param_unknown": "Onverwachte data voor project slice_param: {0}",
+            "project_slice_result_json": "Fout bij verwerken project slice_result json: {0}\n{1}",
+            "project_slice_result_unknown": "Onverwachte data voor project slice_result: {0}"
+        },
+        "gcode_parsing": {
+            "invalid_path": "Kan een leeg bestandspad niet verwerken.",
+            "invalid_ext": "Alleen gcode-bestanden worden ondersteund.",
+            "fetch_failed": "Ophalen van project-gcodegegevens mislukt.",
+            "material_list_empty": "Lege materiaallijst in gcode-bestand.",
+            "read_fail": "Lezen van gcode-bestand mislukt, fout: {0}",
+            "byte_decode_fail": "Decoderen van gcode-bytes mislukt, fout: {0}",
+            "invalid_path_and_bytes": "Kan slicerdata niet lezen zonder bestandspad of bytes.",
+            "parse_meta_fail": "Verwerken van gcode-metadata mislukt, fout: {0}",
+            "empty_paint_info": "Kan AMS paint-info niet laden uit gcode.",
+            "empty_used_filament": "Kan verbruikt filament niet laden uit gcode.",
+            "invalid_used_filament": "Onvoldoende verbruikt-filamentinfo gevonden voor AMS-data.",
+            "slot_material_list_mismatch": "{0} slots opgegeven maar {1} materialen gevonden in gcode-bestand."
+        },
+        "auth": {
+            "missing_auth": "Kan niet authenticeren, anycubic_auth-object ontbreekt.",
+            "set_auth_missing_token": "Token is verplicht",
+            "missing_auth_token": "Auth-token ontbreekt.",
+            "user_id_md5_tuple_missing_id": "Kan user_id_md5_tuple niet opbouwen, user-id ontbreekt.",
+            "access_token_login_failed": "Authenticatie met token mislukt, serverbericht: {0}"
+        },
+        "auth_token_expired": {
+            "invalid_credentials": "Ongeldige inloggegevens."
+        },
+        "invalid_value": {
+            "invalid_nozzle_temp": "Ongeldige doeltemperatuur voor nozzle.",
+            "too_low_nozzle_temp": "Doeltemperatuur voor nozzle is lager dan toegestaan.",
+            "too_high_nozzle_temp": "Doeltemperatuur voor nozzle is hoger dan toegestaan.",
+            "invalid_hotbed_temp": "Ongeldige doeltemperatuur voor hotbed.",
+            "too_low_hotbed_temp": "Doeltemperatuur voor hotbed is lager dan toegestaan.",
+            "too_high_hotbed_temp": "Doeltemperatuur voor hotbed is hoger dan toegestaan.",
+            "invalid_speed_mode": "Ongeldige printsnelheidsmodus.",
+            "speed_mode_not_found": "Printsnelheidsmodus {0} niet gevonden in beschikbare modi.",
+            "invalid_fan_speed": "Ongeldige ventilatorsnelheid %.",
+            "too_low_fan_speed": "Ventilatorsnelheid is lager dan toegestaan.",
+            "too_high_fan_speed": "Ventilatorsnelheid is hoger dan toegestaan."
+        },
+        "loading_props": {
+            "range_nozzle_temp": "Toegestaan nozzle-temperatuurbereik is niet geladen.",
+            "range_hotbed_temp": "Toegestaan hotbed-temperatuurbereik is niet geladen.",
+            "speed_modes_not_loaded": "Beschikbare printsnelheidsmodi zijn niet geladen."
+        },
+        "cloud_upload": {
+            "missing_path_bytes": "AnycubicCloudUpload aangemaakt zonder pad of bytes.",
+            "missing_user_store_previous": "Fout in set_previous_data_with_user_store, user_store ontbreekt",
+            "missing_user_store_current": "Fout in set_current_data_with_user_store, user_store ontbreekt",
+            "missing_path": "Kan geen leeg bestandspad uploaden.",
+            "path_not_exist": "Upload mislukt, pad bestaat niet.",
+            "empty_file_size": "Kan bestand niet uploaden: {0} - leeg bestand.",
+            "empty_file_bytes": "Kan bestand niet uploaden: {0} - geen data.",
+            "unknown": "Fout bij uploaden bestand: {0} - {1}.",
+            "no_space_available": "Kan bestand niet uploaden: {0} - geen ruimte in cloud.",
+            "not_found_cloud": "Onbekende fout bij uploaden bestand: {0} - niet gevonden in cloudopslag.",
+            "missing_unlock_file_id": "Fout in unlock_storage_space, lock_file_id ontbreekt",
+            "missing_lock_data": "Fout in upload_and_set_cloud_file_id, lock_data ontbreekt",
+            "missing_file_bytes": "Fout in upload_and_set_cloud_file_id, file_bytes ontbreekt",
+            "missing_lock_file_id": "Fout in upload_and_set_cloud_file_id, lock_file_id ontbreekt",
+            "file_claim_failed": "Claimen van bestandsupload mislukt, respons: {0}"
+        },
+        "mqtt_update": {
+            "unknown": "Onbekende mqtt-update, type: {0}.",
+            "lastwill": "Onbekende lastwill-status.",
+            "user": "Onbekende user-update.",
+            "printer_status": "Onbekende status/workReport.",
+            "ota_ace": "Onbekende ota multiColorBox-data.",
+            "ota_printer": "Onbekende ota-versie.",
+            "temperature": "Onbekende temperatuurdata.",
+            "fan": "Onbekende fandata.",
+            "job_status": "Onbekende printstatusdata.",
+            "ace": "Onbekende multiColorBox-data.",
+            "shelves": "Onbekende shelves-data.",
+            "file": "Onbekende bestandsdata.",
+            "peripherals": "Onbekende peripherals-data."
+        },
+        "system": {
+            "cloud_requires_token": "Cloud-modus vereist user_token",
+            "cloud_auth_failed": "Cloud-authenticatie mislukt",
+            "no_cloud_printers": "Geen cloudprinters gevonden voor dit account",
+            "cloud_mqtt_timeout": "Cloud MQTT-verbinding time-out",
+            "lan_api_contact_error": "Fout bij benaderen printer-API op {0}: {1}",
+            "lan_api_control_error": "Printerbesturingsverzoek mislukt: {0}",
+            "lan_invalid_broker_url": "Ongeldige MQTT broker-URL: {0}",
+            "time_regex_no_match": "Kan tijdformaat niet verwerken - geen regex-overeenkomst"
+        }
+    }
+}
