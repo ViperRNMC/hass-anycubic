@@ -21,7 +21,7 @@ from .const import (
     EXT_FILBOX_KEY,
     MULTI_COLOR_BOX_KEY,
 )
-from .transports.base import AnycubicTransport
+from .helper.tbase import AnycubicTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -289,11 +289,11 @@ async def async_create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> A
     mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
 
     if mode == CONNECTION_MODE_CLOUD:
-        from .transports.cloud.transport import CloudTransport
+        from .helper.cloud.transport import CloudTransport
 
         transport = CloudTransport(hass, entry)
     else:
-        from .transports.lan.transport import LanTransport
+        from .helper.lan.transport import LanTransport
 
         transport = LanTransport(hass, entry.data["host"])
 

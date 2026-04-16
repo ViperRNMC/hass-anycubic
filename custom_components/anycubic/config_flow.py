@@ -23,8 +23,8 @@ from .const import (
     CONNECTION_MODE_LAN,
     DOMAIN,
 )
-from .helper.api import AnycubicAPI
-from .transports.cloud.sdk import AnycubicAuthMode, AnycubicMQTTAPI
+from .helper.lan.api import AnycubicAPI
+from .helper.cloud import AnycubicAuthMode, AnycubicMQTTAPI
 
 _LOGGER = logging.getLogger(__name__)
 
