@@ -274,12 +274,42 @@ class AnycubicAPIBase:
             auth_access_token = f"{auth_token}"
             auth_token = None
 
+        # Restore: If an access token is provided but no explicit auth_mode,
+        # default to SLICER so the public API headers (Xx-*) match
+        # the Slicer Next behaviour expected by the server.
+        if auth_access_token and auth_mode is None:
+            auth_mode = AnycubicAuthMode.SLICER
+
+        # Heuristic: if caller passed only a token (likely the Slicer
+        # access token) and didn't set auth_mode, treat that token as
+        # an access token for SLICER. This mirrors de UI behaviour
+        # where users paste the Slicer access token into the field.
+        if auth_mode is None and auth_token and isinstance(auth_token, str) and '.' in auth_token:
+            auth_mode = AnycubicAuthMode.SLICER
+            if auto_pick_token and not auth_access_token:
+                auth_access_token = f"{auth_token}"
+                auth_token = None
+
+        if (
+            auto_pick_token and (
+                not auth_access_token
+                and auth_mode == AnycubicAuthMode.SLICER
+            )
+        ):
+            auth_access_token = f"{auth_token}"
+            auth_token = None
+
         self._anycubic_auth = AnycubicAuthentication(
             auth_token=auth_token,
             auth_mode=auth_mode,
             device_id=device_id,
             auth_access_token=auth_access_token,
         )
+
+    def _get_logger(self):
+        # Always return a logger, even if self._logger is missing
+        import logging
+        return getattr(self, '_logger', logging.getLogger(__name__))
 
     def get_auth_config_dict(self) -> dict[str, Any]:
         self._tokens_changed = False
@@ -299,20 +329,34 @@ class AnycubicAPIBase:
 
     async def _get_user_token_with_access_token(self) -> None:
         params = self.anycubic_auth.auth_access_token_payload
+        logger = self._get_logger()
+        logger.error("[Anycubic] Access-token login: sending payload=%s", params)
         resp = await self._fetch_api_resp(
             endpoint=API_ENDPOINT.auth_sig_token,
             query=None,
             params=params,
             with_token=False,
         )
+        logger.error("[Anycubic] Access-token login: server response=%s", resp)
         if not resp or not resp['data']:
             server_message = resp.get('msg') if resp else None
             error_message = ErrorsAuth.access_token_login_failed.format(server_message)
+            logger.error("[Anycubic] Access-token login FAILED: %s", error_message)
             self._log_to_debug(error_message)
             raise AnycubicAuthError(error_message)
         self.anycubic_auth.set_auth_token(
             resp['data']['token']
         )
+        # Set user info (email, id) for MQTT login
+        if 'user' in resp['data']:
+            user = resp['data']['user']
+            logger.error("[Anycubic] Access-token login: user info from server: %s", user)
+            if 'user_email' in user:
+                self.anycubic_auth.set_api_user_email(user['user_email'])
+            if 'id' in user:
+                self.anycubic_auth.set_api_user_id(user['id'])
+        else:
+            logger.error("[Anycubic] Access-token login: NO user info in server response!")
         self._log_to_debug("Logged in and retrieved user token with access_token.")
 
     async def _get_user_token_with_access_token_with_retry(self) -> None:

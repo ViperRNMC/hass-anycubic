@@ -112,6 +112,7 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
         """Validate cloud credentials by performing a real API token check.
 
         Returns the selected mode name on success, None on failure.
+        Logs all exceptions at WARNING level for diagnostics.
         """
         cookie_jar = CookieJar(unsafe=True)
         websession = async_create_clientsession(
@@ -131,7 +132,7 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
                 if await api.check_api_tokens():
                     return mode.name.lower()
             except Exception as err:
-                _LOGGER.debug("Cloud config validation failed for mode %s: %s", mode, err)
+                _LOGGER.warning("Cloud config validation failed for mode %s: %s", mode, err, exc_info=True)
 
         return None
 

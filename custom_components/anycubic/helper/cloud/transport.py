@@ -142,6 +142,7 @@ class CloudTransport(AnycubicTransport):
 
         success = False
         selected_mode: AnycubicAuthMode | None = None
+
         for mode in mode_candidates:
             self._api.set_authentication(
                 auth_token=token,
@@ -154,12 +155,13 @@ class CloudTransport(AnycubicTransport):
                     selected_mode = mode
                     break
             except Exception as err:
-                _LOGGER.debug("Cloud auth attempt failed for mode %s: %s", mode, err)
+                _LOGGER.error("Cloud auth attempt failed for mode %s: %s", mode, err, exc_info=True)
 
             if success:
                 break
 
         if not success:
+            _LOGGER.error("Cloud authentication failed for all modes. Token: %s, Device ID: %s", token, normalized_device_id)
             raise ValueError(ErrorsSystem.cloud_auth_failed)
 
         updates: dict[str, Any] = {}
