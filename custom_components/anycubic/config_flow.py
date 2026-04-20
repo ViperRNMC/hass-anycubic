@@ -37,6 +37,8 @@ STEP_CHOOSE_SCHEMA = vol.Schema(
 
 STEP_LAN_SCHEMA = vol.Schema({vol.Required(CONF_HOST): str})
 
+
+
 STEP_CLOUD_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USER_AUTH_MODE, default=CLOUD_AUTH_MODE_SLICER): vol.In(
@@ -175,14 +177,19 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="lan", data_schema=STEP_LAN_SCHEMA, errors=errors)
 
-    async def async_step_cloud(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+
+
+    async def async_step_cloud(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """
+        Step 1: Authenticate and fetch printers, then go to printer selection.
+        """
+        errors = {}
         if user_input is None:
             return self.async_show_form(step_id="cloud", data_schema=STEP_CLOUD_SCHEMA)
 
         token = _normalize_credential(user_input[CONF_USER_TOKEN])
         device_id = _normalize_credential(user_input.get(CONF_USER_DEVICE_ID, ""))
+        auth_mode = user_input.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER)
 
         if not token:
             return self.async_show_form(
@@ -192,7 +199,7 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         selected_mode = await self._async_validate_cloud_credentials(
-            auth_mode=user_input.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER),
+            auth_mode=auth_mode,
             token=token,
             device_id=device_id,
         )
@@ -203,17 +210,88 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors={"base": "invalid_auth"},
             )
 
-        await self.async_set_unique_id(f"cloud_{token[:16]}")
+        # Save credentials for next step
+        self._cloud_creds = {
+            CONF_USER_TOKEN: token,
+            CONF_USER_DEVICE_ID: device_id,
+            CONF_USER_AUTH_MODE: selected_mode,
+        }
+
+        # Fetch printers using the authenticated API
+        cookie_jar = CookieJar(unsafe=True)
+        websession = async_create_clientsession(self.hass, cookie_jar=cookie_jar, verify_ssl=False)
+        from .helper.cloud.api import AnycubicAPIBase
+        api = AnycubicAPIBase(session=websession, cookie_jar=cookie_jar)
+        api.set_authentication(auth_token=token, auth_mode=_resolve_auth_mode(selected_mode), device_id=device_id)
+        try:
+            printers = await api.get_printers()
+        except Exception as err:
+            _LOGGER.error("Failed to fetch printers: %s", err, exc_info=True)
+            return self.async_show_form(
+                step_id="cloud",
+                data_schema=STEP_CLOUD_SCHEMA,
+                errors={"base": "cannot_connect"},
+            )
+
+        if not printers:
+            return self.async_show_form(
+                step_id="cloud",
+                data_schema=STEP_CLOUD_SCHEMA,
+                errors={"base": "no_printers_found"},
+            )
+
+        # Store printers for next step
+        self._cloud_printers = printers
+
+        # Build selection schema
+        printer_choices = {str(p["id"]): p.get("name") or p.get("machine_name") or f"Printer {p['id']}" for p in printers}
+        import voluptuous as vol
+        PRINTER_SELECT_SCHEMA = vol.Schema({vol.Required("printer_id"): vol.In(printer_choices)})
+
+        return self.async_show_form(
+            step_id="cloud_printer",
+            data_schema=PRINTER_SELECT_SCHEMA,
+            description_placeholders={"printer_list": ", ".join(printer_choices.values())},
+        )
+
+    async def async_step_cloud_printer(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """
+        Step 2: User selects a printer from the fetched list.
+        """
+        if not hasattr(self, "_cloud_creds") or not hasattr(self, "_cloud_printers"):
+            return self.async_abort(reason="missing_context")
+
+        if user_input is None:
+            # Defensive: re-show selection if somehow called without input
+            printer_choices = {str(p["id"]): p.get("name") or p.get("machine_name") or f"Printer {p['id']}" for p in self._cloud_printers}
+            import voluptuous as vol
+            PRINTER_SELECT_SCHEMA = vol.Schema({vol.Required("printer_id"): vol.In(printer_choices)})
+            return self.async_show_form(
+                step_id="cloud_printer",
+                data_schema=PRINTER_SELECT_SCHEMA,
+                description_placeholders={"printer_list": ", ".join(printer_choices.values())},
+            )
+
+        printer_id = user_input["printer_id"]
+        printer = next((p for p in self._cloud_printers if str(p["id"]) == printer_id), None)
+        if not printer:
+            return self.async_abort(reason="printer_not_found")
+
+        await self.async_set_unique_id(f"cloud_{self._cloud_creds[CONF_USER_TOKEN][:16]}_{printer_id}")
         self._abort_if_unique_id_configured()
 
+        entry_data = {
+            CONF_CONNECTION_MODE: CONNECTION_MODE_CLOUD,
+            CONF_USER_AUTH_MODE: self._cloud_creds[CONF_USER_AUTH_MODE],
+            CONF_USER_TOKEN: self._cloud_creds[CONF_USER_TOKEN],
+            CONF_USER_DEVICE_ID: self._cloud_creds[CONF_USER_DEVICE_ID],
+            "printer_id": printer_id,
+            "printer_name": printer.get("name") or printer.get("machine_name"),
+        }
+
         return self.async_create_entry(
-            title="Anycubic Cloud",
-            data={
-                CONF_CONNECTION_MODE: CONNECTION_MODE_CLOUD,
-                CONF_USER_AUTH_MODE: selected_mode,
-                CONF_USER_TOKEN: token,
-                CONF_USER_DEVICE_ID: device_id,
-            },
+            title=printer.get("name") or printer.get("machine_name") or f"Anycubic Cloud Printer {printer_id}",
+            data=entry_data,
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:

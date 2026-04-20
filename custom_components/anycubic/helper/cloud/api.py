@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-import json
-import time
 from typing import Any, overload
 
+
 import aiohttp
+import time
+import asyncio
+import time
 
 from ...const import (
     ACCESS_TOKEN_LOGIN_RETRIES,
@@ -32,7 +33,61 @@ from .auth import AnycubicAuthentication, AnycubicAuthMode
 from .http import HTTP_METHODS, AnycubicAPIEndpoint
 
 
+
 class AnycubicAPIBase:
+    """
+    Main API class for Anycubic Cloud.
+    Handles authentication and API requests.
+    """
+
+    async def get_printers(self) -> list[dict[str, Any]]:
+        """
+        Fetch the list of printers for the authenticated user.
+        Returns a list of printer dicts (raw API response).
+        """
+        resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.printer_get_printers)
+        if not resp or 'data' not in resp or not isinstance(resp['data'], list):
+            raise AnycubicAPIParsingError("Failed to fetch printers or invalid response format.")
+        return resp['data']
+
+
+    async def login_with_email_password(self, email: str, password: str) -> None:
+        """
+        Login with email and password via the Anycubic Cloud API.
+        Sets the access_token and user info for further API/MQTT use.
+        """
+        logger = self._get_logger()
+        payload = {
+            "email": email,
+            "password": password,
+            "device_type": "pcf",
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Xx-Device-Type": "pcf",
+            "Xx-Version": "1.3.9.4",
+            "Xx-Platform": "pc",
+            "User-Agent": "AnycubicSlicer/1.3.9.4",
+        }
+        url = "https://cloud.anycubic.com/v3/public/login"
+        async with self._session.post(url, json=payload, headers=headers) as resp:
+            data = await resp.json()
+        logger.error("[Anycubic] Email login: sent payload=%s", payload)
+        logger.error("[Anycubic] Email login: server response=%s", data)
+        if not data or data.get("code") != 1 or not data.get("data"):
+            msg = data.get("msg") if data else "No response"
+            logger.error("[Anycubic] Email login FAILED: %s", msg)
+            raise AnycubicAuthError(f"Failed to login with email: {msg}")
+        token = data["data"].get("token")
+        user = data["data"].get("user")
+        if not token or not user:
+            logger.error("[Anycubic] Email login: missing token or user info!")
+            raise AnycubicAuthError("Login succeeded but missing token/user info")
+        # Zet authenticatie voor verdere API calls
+        self.set_authentication(auth_token=token, auth_mode=None, device_id=None)
+        self.anycubic_auth.set_api_user_email(user.get("user_email"))
+        self.anycubic_auth.set_api_user_id(user.get("id"))
+        logger.error("[Anycubic] Email login: success, user=%s", user)
     __slots__ = (
         "_base_url",
         "_public_api_root",
@@ -161,17 +216,28 @@ class AnycubicAPIBase:
         is_json: bool = True,
         return_url: bool = False,
     ) -> dict[Any, Any] | str:
+        import json
         url = base_url
         time_start: float = time.time()
         headers = {**self._web_headers(with_origin=with_origin), **extra_headers}
+
+        # Special handling for /v3/public/loginWithAccessToken: send as form data
+        is_access_token_login = "/v3/public/loginWithAccessToken" in url
         if method == HTTP_METHODS.POST:
-            if params is not None and (isinstance(params, dict) or isinstance(params, list)):
-                data = json.dumps(params)
-            elif params is not None:
-                data = str(params)
+            if is_access_token_login:
+                # Send as form data, let aiohttp set Content-Type
+                # Remove Content-Type if present
+                headers.pop("Content-Type", None)
+                data = params if params is not None else {}
+                h_coro = self._session.post(url, params=query, data=data, headers=headers)
             else:
-                data = None
-            h_coro = self._session.post(url, params=query, data=data, headers=headers)
+                if params is not None and (isinstance(params, dict) or isinstance(params, list)):
+                    data = json.dumps(params)
+                elif params is not None:
+                    data = str(params)
+                else:
+                    data = None
+                h_coro = self._session.post(url, params=query, data=data, headers=headers)
         elif method == HTTP_METHODS.PUT:
             h_coro = self._session.put(url, params=query, data=put_data, headers=headers)
         else:
@@ -331,25 +397,28 @@ class AnycubicAPIBase:
         params = self.anycubic_auth.auth_access_token_payload
         logger = self._get_logger()
         logger.error("[Anycubic] Access-token login: sending payload=%s", params)
-        resp = await self._fetch_api_resp(
-            endpoint=API_ENDPOINT.auth_sig_token,
-            query=None,
-            params=params,
-            with_token=False,
-        )
-        logger.error("[Anycubic] Access-token login: server response=%s", resp)
-        if not resp or not resp['data']:
-            server_message = resp.get('msg') if resp else None
+        # Force correct POST as form-data, never set Content-Type
+        url = self._build_api_url(API_ENDPOINT.auth_sig_token)
+        headers = self._web_headers()
+        headers.pop("Content-Type", None)
+        async with self._session.post(url, data=params, headers=headers) as resp:
+            try:
+                data = await resp.json()
+            except Exception:
+                data = await resp.text()
+        logger.error("[Anycubic] Access-token login: server response=%s", data)
+        if not data or not data.get('data'):
+            server_message = data.get('msg') if isinstance(data, dict) else str(data)
             error_message = ErrorsAuth.access_token_login_failed.format(server_message)
             logger.error("[Anycubic] Access-token login FAILED: %s", error_message)
             self._log_to_debug(error_message)
             raise AnycubicAuthError(error_message)
         self.anycubic_auth.set_auth_token(
-            resp['data']['token']
+            data['data']['token']
         )
         # Set user info (email, id) for MQTT login
-        if 'user' in resp['data']:
-            user = resp['data']['user']
+        if 'user' in data['data']:
+            user = data['data']['user']
             logger.error("[Anycubic] Access-token login: user info from server: %s", user)
             if 'user_email' in user:
                 self.anycubic_auth.set_api_user_email(user['user_email'])
