@@ -263,7 +263,12 @@ class CloudTransport(AnycubicTransport):
             "state": p.latest_project_print_status,
             "progress": p.latest_project_progress_percentage,
             "curr_layer": p.latest_project_print_current_layer,
-            "z_thickness": p.latest_project_print_z_up_height,
+            # Prefer explicit print z-up height, fall back to project z_thick or model height
+            "z_thickness": (
+                p.latest_project_print_z_up_height
+                or p.latest_project_z_thick
+                or p.latest_project_print_model_height
+            ),
             "filename": p.latest_project_name,
             "image_url": p.latest_project_image_url,
             "print_time": p.latest_project_print_time_elapsed_minutes,
