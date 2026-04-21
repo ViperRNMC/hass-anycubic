@@ -45,8 +45,22 @@ class AnycubicAPIBase:
         Fetch the list of printers for the authenticated user.
         Returns a list of printer dicts (raw API response).
         """
+        logger = self._get_logger()
+        # Ensure we have valid user tokens (may need to exchange access token)
+        try:
+            tokens_ok = await self.check_api_tokens()
+        except Exception as e:
+            logger.error("[Anycubic] get_printers: auth token check failed: %s", e)
+            raise
+        if not tokens_ok:
+            logger.error("[Anycubic] get_printers: authentication required or tokens expired")
+            raise AnycubicAuthError(ErrorsAuth.login_required)
+
         resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.printer_get_printers)
+        logger.error("[Anycubic] get_printers: raw response=%s", resp)
         if not resp or 'data' not in resp or not isinstance(resp['data'], list):
+            # Provide more context in the error to aid debugging
+            logger.error("[Anycubic] get_printers: unexpected response format: %s", resp)
             raise AnycubicAPIParsingError("Failed to fetch printers or invalid response format.")
         return resp['data']
 
@@ -220,6 +234,26 @@ class AnycubicAPIBase:
         url = base_url
         time_start: float = time.time()
         headers = {**self._web_headers(with_origin=with_origin), **extra_headers}
+        # Defensive: ensure headers contain only string keys (aiohttp requires str keys)
+        if not isinstance(headers, dict):
+            self._log_to_error(f"Request headers not a dict: {type(headers)}")
+            headers = dict(headers or {})
+        # Log header keys for debugging
+        try:
+            self._log_to_debug(f"Request headers keys: {[ (type(k), k) for k in headers.keys() ]}")
+        except Exception:
+            pass
+        # Remove any keys that are not strings to avoid aiohttp serialization errors
+        invalid_keys = [k for k in headers.keys() if not isinstance(k, str)]
+        if invalid_keys:
+            self._log_to_error(f"Dropping invalid header keys: {invalid_keys}")
+            headers = {k: v for k, v in headers.items() if isinstance(k, str)}
+        # Final fallback: coerce all header keys to strings to be safe.
+        try:
+            headers = {str(k): v for k, v in headers.items()}
+        except Exception:
+            # If coercion fails, ensure headers is at least a dict with string keys
+            headers = {"": ""}
 
         # Special handling for /v3/public/loginWithAccessToken: send as form data
         is_access_token_login = "/v3/public/loginWithAccessToken" in url
@@ -246,6 +280,12 @@ class AnycubicAPIBase:
         response_url = None
 
         try:
+            # Debug: log full headers right before sending request
+            try:
+                self._log_to_debug(f"Sending request to {url} with headers: {headers!r}")
+            except Exception:
+                pass
+
             async with h_coro as resp:
                 if is_json:
                     resp_data: dict[str, Any] | str = await resp.json()
@@ -399,8 +439,20 @@ class AnycubicAPIBase:
         logger.error("[Anycubic] Access-token login: sending payload=%s", params)
         # Force correct POST as form-data, never set Content-Type
         url = self._build_api_url(API_ENDPOINT.auth_sig_token)
-        headers = self._web_headers()
+        # Build headers using computed auth headers (Xx-*) plus any web headers
+        try:
+            auth_headers = self.anycubic_auth.get_auth_headers(with_token=False)
+        except Exception:
+            auth_headers = {}
+        web_headers = self._web_headers()
+        headers = {**web_headers, **auth_headers}
+        # Remove Content-Type so aiohttp will set multipart/form-data correctly
         headers.pop("Content-Type", None)
+        # Ensure header keys are strings
+        try:
+            headers = {str(k): v for k, v in headers.items()}
+        except Exception:
+            headers = {"": ""}
         async with self._session.post(url, data=params, headers=headers) as resp:
             try:
                 data = await resp.json()

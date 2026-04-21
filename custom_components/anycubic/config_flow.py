@@ -90,53 +90,213 @@ def _build_auth_mode_candidates(auth_mode_raw: Any) -> list[AnycubicAuthMode]:
     return mode_candidates
 
 
+
+# --- Main branch style: robust multi-step config flow ---
 class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Config flow for selecting LAN or Cloud mode."""
+    """Handle a config flow for Anycubic (LAN or Cloud)."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._reauth_entry = None
+        # Cloud state
+        self._user_token: str | None = None
+        self._user_auth_mode: AnycubicAuthMode | int | None = None
+        self._user_device_id: str | None = None
+        self._cloud_api: Any = None
+        self._is_reauth: bool = False
+        self._is_reconfigure: bool = False
+        self.entry = None
 
     @staticmethod
-    def _reauth_auth_mode_default(entry_data: dict[str, Any]) -> str:
-        configured = str(entry_data.get(CONF_USER_AUTH_MODE, CLOUD_AUTH_MODE_SLICER)).strip().lower()
-        if configured == CLOUD_AUTH_MODE_ANDROID:
-            return CLOUD_AUTH_MODE_ANDROID
-        return CLOUD_AUTH_MODE_SLICER
+    def async_get_options_flow(config_entry):
+        return AnycubicOptionsFlowHandler(config_entry)
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the connection mode menu."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["lan", "cloud_auth_mode_pick"],
+        )
+
+    async def async_step_lan(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            try:
+                api = AnycubicAPI(host)
+                printer_data = await self.hass.async_add_executor_job(api.discover)
+            except Exception:
+                errors["base"] = "cannot_connect"
+            else:
+                unique_id = printer_data.get("deviceId", host)
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=printer_data.get("modelName", f"Anycubic @ {host}"),
+                    data={
+                        CONF_CONNECTION_MODE: CONNECTION_MODE_LAN,
+                        CONF_HOST: host,
+                        **printer_data,
+                    },
+                )
+
+        return self.async_show_form(step_id="lan", data_schema=STEP_LAN_SCHEMA, errors=errors)
+
+    async def async_step_cloud_auth_mode_pick(
+        self, _: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud: choose authentication method."""
+        return self.async_show_menu(
+            step_id="cloud_auth_mode_pick",
+            menu_options=["cloud_auth_slicer"],
+        )
+
+    async def async_step_cloud_auth_slicer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._handle_cloud_auth_step(
+            step_id="cloud_auth_slicer",
+            auth_mode=AnycubicAuthMode.SLICER,
+            auth_schema=vol.Schema({vol.Required(CONF_USER_TOKEN): str}),
+            user_input=user_input,
+        )
+
+    async def _handle_cloud_auth_step(
+        self,
+        step_id: str,
+        auth_mode: AnycubicAuthMode,
+        auth_schema: vol.Schema,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            errors = await self._validate_cloud_credentials(auth_mode, user_input)
+            if not errors:
+                if self._is_reauth and self.entry:
+                    self.hass.config_entries.async_update_entry(
+                        self.entry,
+                        data={
+                            **self.entry.data,
+                            CONF_USER_TOKEN: self._user_token,
+                            CONF_USER_AUTH_MODE: self._user_auth_mode,
+                            CONF_USER_DEVICE_ID: self._user_device_id,
+                        },
+                    )
+                    return self.async_abort(reason="reauth_successful")
+                return await self.async_step_cloud_printer()
+
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=auth_schema,
+            errors=errors,
+        )
+
+    async def _validate_cloud_credentials(
+        self,
+        auth_mode: AnycubicAuthMode,
+        user_input: dict[str, Any],
+    ) -> dict[str, str]:
+        try:
+            self._user_token = str(user_input[CONF_USER_TOKEN]).strip()
+        except TypeError:
+            self._user_token = user_input[CONF_USER_TOKEN]
+
+        self._user_auth_mode = auth_mode
+        self._user_device_id = user_input.get(CONF_USER_DEVICE_ID)
+
+        try:
+            cookie_jar = CookieJar(unsafe=True)
+            websession = async_create_clientsession(self.hass, cookie_jar=cookie_jar, verify_ssl=False)
+            from .helper.cloud.api import AnycubicAPIBase
+            self._cloud_api = AnycubicAPIBase(session=websession, cookie_jar=cookie_jar)
+            self._cloud_api.set_authentication(
+                auth_token=self._user_token,
+                auth_mode=self._user_auth_mode,
+                device_id=self._user_device_id,
+            )
+            success = await self._cloud_api.check_api_tokens()
+            if not success:
+                return {"base": "invalid_auth"}
+        except Exception as error:
+            _LOGGER.debug("Cloud auth error: %s", error)
+            return {"base": "cannot_connect"}
+        return {}
 
     async def _async_validate_cloud_credentials(
         self,
-        auth_mode: Any,
+        auth_mode: AnycubicAuthMode | int | str | None,
         token: str,
-        device_id: str,
-    ) -> str | None:
-        """Validate cloud credentials by performing a real API token check.
+        device_id: str | None = None,
+    ) -> AnycubicAuthMode | None:
+        """Validate cloud credentials and return the selected auth mode or None.
 
-        Returns the selected mode name on success, None on failure.
-        Logs all exceptions at WARNING level for diagnostics.
+        This is a compatibility wrapper used by flows that pass token/device_id
+        as separate arguments.
         """
-        cookie_jar = CookieJar(unsafe=True)
-        websession = async_create_clientsession(
-            self.hass,
-            cookie_jar=cookie_jar,
-            verify_ssl=False,
-        )
-        api = AnycubicMQTTAPI(session=websession, cookie_jar=cookie_jar)
+        resolved_mode = _resolve_auth_mode(auth_mode)
+        # Build a user_input dict compatible with _validate_cloud_credentials
+        ui: dict[str, Any] = {CONF_USER_TOKEN: token}
+        if device_id:
+            ui[CONF_USER_DEVICE_ID] = device_id
 
-        for mode in _build_auth_mode_candidates(auth_mode):
-            api.set_authentication(
-                auth_token=token,
-                auth_mode=mode,
-                device_id=device_id,
+        errors = await self._validate_cloud_credentials(resolved_mode or auth_mode, ui)
+        if errors:
+            return None
+        return resolved_mode or auth_mode
+
+    async def async_step_cloud_printer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud: select printer(s)."""
+        errors: dict[str, str] = {}
+        printer_id_map: dict[str, str] = {}
+
+        try:
+            assert self._cloud_api
+            printers = await self._cloud_api.get_printers()
+            if not printers:
+                errors = {"base": "no_printers"}
+            else:
+                printer_id_map = {str(p["id"]): p.get("name") or p.get("machine_name") or f"Printer {p['id']}" for p in printers}
+        except Exception as error:
+            _LOGGER.debug("Error listing printers: %s", error)
+            errors = {"base": "cannot_connect"}
+
+        if user_input and not errors:
+            printer_id_list = [int(x) for x in user_input[CONF_PRINTER_ID_LIST]]
+            selected_names = [printer_id_map.get(str(pid), str(pid)) for pid in printer_id_list]
+            if len(selected_names) == 1:
+                entry_title = f"Anycubic Cloud - {selected_names[0]}"
+            else:
+                entry_title = f"Anycubic Cloud ({len(selected_names)} printers)"
+            assert self._cloud_api
+            await self.async_set_unique_id(f"cloud_{self._cloud_api.anycubic_auth.api_user_id}")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title=entry_title,
+                data={
+                    CONF_CONNECTION_MODE: CONNECTION_MODE_CLOUD,
+                    CONF_USER_TOKEN: self._user_token,
+                    CONF_USER_AUTH_MODE: self._user_auth_mode,
+                    CONF_USER_DEVICE_ID: self._user_device_id,
+                    CONF_PRINTER_ID_LIST: printer_id_list,
+                },
             )
-            try:
-                if await api.check_api_tokens():
-                    return mode.name.lower()
-            except Exception as err:
-                _LOGGER.warning("Cloud config validation failed for mode %s: %s", mode, err, exc_info=True)
 
-        return None
+        return self.async_show_form(
+            step_id="cloud_printer",
+            data_schema=vol.Schema({
+                vol.Required(CONF_PRINTER_ID_LIST): vol.In(printer_id_map)
+            }),
+            errors=errors,
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -217,12 +377,17 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_USER_AUTH_MODE: selected_mode,
         }
 
-        # Fetch printers using the authenticated API
-        cookie_jar = CookieJar(unsafe=True)
-        websession = async_create_clientsession(self.hass, cookie_jar=cookie_jar, verify_ssl=False)
+        # Fetch printers using the authenticated API. Reuse the API instance
+        # created during validation when possible to avoid duplicate token
+        # exchanges (which trigger server rate-limits).
         from .helper.cloud.api import AnycubicAPIBase
-        api = AnycubicAPIBase(session=websession, cookie_jar=cookie_jar)
-        api.set_authentication(auth_token=token, auth_mode=_resolve_auth_mode(selected_mode), device_id=device_id)
+        if hasattr(self, "_cloud_api") and self._cloud_api is not None:
+            api: AnycubicAPIBase = self._cloud_api
+        else:
+            cookie_jar = CookieJar(unsafe=True)
+            websession = async_create_clientsession(self.hass, cookie_jar=cookie_jar, verify_ssl=False)
+            api = AnycubicAPIBase(session=websession, cookie_jar=cookie_jar)
+            api.set_authentication(auth_token=token, auth_mode=_resolve_auth_mode(selected_mode), device_id=device_id)
         try:
             printers = await api.get_printers()
         except Exception as err:

@@ -270,14 +270,30 @@ class AnycubicAuthentication:
             'Xx-Version': self._app_version,
             'Content-Type': 'application/json',
         }
+        # Prefer consistent casing and safe defaults for optional entries
         if self._auth_mode == AnycubicAuthMode.ANDROID:
-            auth_headers['XX-Device-Id'] = self.device_id
+            auth_headers['Xx-Device-Id'] = self.device_id or ""
         if with_token:
-            auth_headers['XX-Token'] = self._auth_token
+            auth_headers['Xx-Token'] = self._auth_token or ""
 
-        auth_headers['XX-LANGUAGE'] = 'US'
+        auth_headers['Xx-LANGUAGE'] = 'US'
 
-        return auth_headers
+        # Coerce keys and values to strings and drop any invalid keys to
+        # avoid aiohttp header serialization errors (non-str keys).
+        safe_headers: dict[str, str] = {}
+        for k, v in auth_headers.items():
+            if k is None:
+                # Skip accidental None keys; upstream bug may set these.
+                continue
+            try:
+                ks = str(k)
+            except Exception:
+                continue
+            # Coerce None values to empty string to be safe for headers
+            vs = "" if v is None else str(v)
+            safe_headers[ks] = vs
+
+        return safe_headers
 
     def get_user_id_md5_tuple(self) -> tuple[int, str]:
         if not self.api_user_id:
