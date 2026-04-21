@@ -7,6 +7,7 @@ prefers standard CSS3/X11 names via the optional `webcolors` package.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import List, Tuple, Union, Dict, Optional
 
@@ -14,6 +15,8 @@ try:
     import webcolors  # type: ignore
 except Exception:
     webcolors = None
+
+_LOGGER = logging.getLogger(__name__)
 
 RGB = Tuple[int, int, int]
 ColorEntry = Union[RGB, Tuple[int, int, int, int], List[int]]
@@ -85,8 +88,18 @@ def _build_css3_cache() -> Dict[str, RGB]:
         return _CSS3_CACHE
     mapping: Dict[str, RGB] = {}
     if webcolors is not None:
-        for name, hexval in webcolors.CSS3_NAMES_TO_HEX.items():
-            mapping[name] = _hex_to_rgb(hexval)
+        try:
+            css_map = getattr(webcolors, "CSS3_NAMES_TO_HEX", None)
+            if css_map is None:
+                # older/newer webcolors variants might expose alternate maps
+                css_map = getattr(webcolors, "CSS21_NAMES_TO_HEX", None) or getattr(webcolors, "HTML4_NAMES_TO_HEX", None)
+            if css_map is None:
+                _LOGGER.debug("webcolors installed but no CSS3 mapping found; falling back to heuristic")
+            else:
+                for name, hexval in css_map.items():
+                    mapping[name] = _hex_to_rgb(hexval)
+        except Exception as err:
+            _LOGGER.debug("Failed to build CSS3 cache from webcolors: %s", err)
     _CSS3_CACHE = mapping
     return mapping
 
