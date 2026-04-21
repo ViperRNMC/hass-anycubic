@@ -1,84 +1,40 @@
-"""Button platform for Anycubic with LAN and Cloud support."""
-
-from __future__ import annotations
+"""Button platform for Anycubic Kobra S1."""
 
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .entity import AnycubicEntity
-from .helper.mapper import printer_attributes_for_key
-from .descriptions import get_descriptions
-from .helper.connection_mode import get_entry_connection_mode
-from .const import (
-    CONNECTION_MODE_CLOUD,
-    CONNECTION_MODE_LAN,
-    COORDINATOR,
-    DOMAIN,
-    MANUFACTURER,
-    MODEL,
-    PrinterEntityType,
-)
+from .const import DOMAIN, BUTTON_DEFINITIONS
+from .helper.device_info import build_main_device_info
 
-if TYPE_CHECKING:
-    from .coordinator import AnycubicBackendCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-LAN_BUTTON_DEFINITIONS = get_descriptions(CONNECTION_MODE_LAN, "button")
 
 
-@dataclass(frozen=True)
-class AnycubicButtonEntityDescription(
-    ButtonEntityDescription
-):
-    """Describes Anycubic Cloud button entity."""
-    printer_entity_type: PrinterEntityType | None = None
+async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up Anycubic buttons for the given config entry.
 
-
-BUTTON_TYPES: list[AnycubicButtonEntityDescription] = list([
-    AnycubicButtonEntityDescription(**item)
-    for item in get_descriptions(CONNECTION_MODE_CLOUD, "button")
-])
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up Anycubic buttons for the given config entry."""
-    mode = get_entry_connection_mode(entry)
-    if mode == CONNECTION_MODE_CLOUD:
-        await _setup_cloud_buttons(hass, entry, async_add_entities)
-        return
-
-    await _setup_lan_buttons(hass, entry, async_add_entities)
-
-
-async def _setup_lan_buttons(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
+    The coordinator instance is read from hass.data and used to create
+    one :class:`AnycubicButtonEntity` per definition in ``BUTTON_DEFINITIONS``.
+    """
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
 
-    entities: list[ButtonEntity] = []
-    for definition in LAN_BUTTON_DEFINITIONS:
-        if definition.get("key") in ("pause_print", "resume_print"):
+    # Create regular buttons from definitions but skip the separate
+    # pause/resume buttons: we'll expose a single toggle with dynamic text.
+    entities = []
+    for d in BUTTON_DEFINITIONS:
+        if d.get("key") in ("print_pause", "print_resume"):
             continue
-        entities.append(AnycubicLanButton(coordinator, definition))
+        entities.append(AnycubicButtonEntity(coordinator, d))
 
-    entities.append(AnycubicLanPrintToggle(coordinator))
+    # Add a single toggle button for print pause/resume with dynamic label
+    entities.append(AnycubicPrintToggleEntity(coordinator))
 
     async_add_entities(entities)
 
+    # Buttons may trigger axis/print actions; request those topics once so
+    # state is available after setup.
     try:
         await coordinator.async_query_topic("axis")
     except Exception:
@@ -89,58 +45,63 @@ async def _setup_lan_buttons(
         _LOGGER.debug("Failed to query print on button setup")
 
 
-async def _setup_cloud_buttons(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    coordinator: AnycubicBackendCoordinator = hass.data[DOMAIN][entry.entry_id][
-        COORDINATOR
-    ]
-
-    coordinator.add_entities_for_seen_printers(
-        async_add_entities=async_add_entities,
-        entity_constructor=AnycubicCloudButton,
-        platform=Platform.BUTTON,
-        available_descriptors=BUTTON_TYPES,
-    )
-
-
-class AnycubicLanButton(CoordinatorEntity, ButtonEntity):
-    """Generic LAN button entity for Anycubic actions."""
+class AnycubicButtonEntity(CoordinatorEntity, ButtonEntity):
+    """Generic button entity for Anycubic actions (homing, print control)."""
 
     def __init__(self, coordinator, definition: dict):
+        """Initialize a button entity from a definition dict.
+
+        Expected definition keys:
+        - name: display name
+        - key: unique key used for unique_id
+        - type: message type (e.g. 'axis' or 'print')
+        - action: action name (e.g. 'move', 'stop', 'pause', 'resume')
+        - axis: optional axis index for axis actions
+        """
         super().__init__(coordinator)
         self.definition = definition
         self._key = definition["key"]
         self._type = definition["type"]
         self._action = definition["action"]
-        self._attr_name = definition.get("name")
-        self._attr_translation_key = self._key
+        self._attr_name = definition["name"]
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
         self._attr_icon = definition.get("icon", "mdi:button-pointer")
         self._attr_has_entity_name = True
         self._axis = definition.get("axis")
 
     async def async_press(self) -> None:
+        """Send the defined control message when the button is pressed."""
+        if self._type == "axis":
+            msg_type = "axis"
+            data = {"axis": self._axis, "move_type": 2, "distance": 0}
+        elif self._type == "print":
+            msg_type = "print"
+            data = {"taskid": "-1"}
+        elif self._type == "temperature":
+            msg_type = "print"
+            data = self.definition.get("data", {})
+        else:
+            _LOGGER.debug("Unknown button type: %s", self._type)
+            return
+
         try:
-            await self.coordinator.button_press_event(None, self._key)
-        except Exception as err:
-            _LOGGER.debug("MQTT publish failed for button %s: %s", self._key, err)
+            await self.coordinator.async_send_command(msg_type, self._action, data)
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Command publish failed for button %s: %s", self._key, err)
 
     @property
     def device_info(self) -> dict:
-        return {
-            "identifiers": {(DOMAIN, self.coordinator.config_entry.entry_id)},
-            "name": self.coordinator.config_entry.title,
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "entry_type": "service",
-        }
+        """Return the device information mapping for the device registry."""
+        return build_main_device_info(self.coordinator)
 
 
-class AnycubicLanPrintToggle(CoordinatorEntity, ButtonEntity):
-    """Single LAN button that toggles print pause/resume."""
+class AnycubicPrintToggleEntity(CoordinatorEntity, ButtonEntity):
+    """Single button that toggles print pause/resume with dynamic label.
+
+    The button displays 'Pause' when a print is actively running and
+    'Resume' when the print is paused. Pressing the button will send the
+    corresponding print action to the device.
+    """
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
@@ -150,10 +111,11 @@ class AnycubicLanPrintToggle(CoordinatorEntity, ButtonEntity):
 
     @property
     def _print_state(self) -> dict:
-        return self.coordinator.data.get("print", {})
+        return self.coordinator.data.get("print", {}).get("data", {})
 
     @property
     def name(self) -> str:
+        # Dynamic display name based on current print state
         state = self._print_state.get("state")
         if state == "paused":
             return "Print Resume"
@@ -161,55 +123,20 @@ class AnycubicLanPrintToggle(CoordinatorEntity, ButtonEntity):
 
     @property
     def icon(self) -> str:
+        # Use play icon for resume, pause icon for pause
         state = self._print_state.get("state")
         return "mdi:play" if state == "paused" else "mdi:pause"
 
     async def async_press(self) -> None:
+        # Decide action based on current print state
         state = self._print_state.get("state")
-        event_key = "resume_print" if state == "paused" else "pause_print"
+        action = "resume" if state == "paused" else "pause"
         try:
-            await self.coordinator.button_press_event(None, event_key)
-        except Exception as err:
-            _LOGGER.debug("MQTT publish failed for print toggle: %s", err)
+            await self.coordinator.async_send_command("print", action, {"taskid": "-1"})
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Command publish failed for print toggle: %s", err)
 
     @property
     def device_info(self) -> dict:
-        return {
-            "identifiers": {(DOMAIN, self.coordinator.config_entry.entry_id)},
-            "name": self.coordinator.config_entry.title,
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "entry_type": "service",
-        }
-
-
-class AnycubicCloudButton(AnycubicEntity, ButtonEntity):
-    """A button for Anycubic Cloud."""
-
-    entity_description: AnycubicButtonEntityDescription
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        coordinator: AnycubicBackendCoordinator,
-        printer_id: int,
-        entity_description: AnycubicButtonEntityDescription,
-    ) -> None:
-        super().__init__(hass, coordinator, printer_id, entity_description)
-
-    async def async_press(self) -> None:
-        if TYPE_CHECKING:
-            assert self.coordinator.anycubic_api, "Connection to API is missing"
-
-        await self.coordinator.button_press_event(self._printer_id, self.entity_description.key)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        attrib = printer_attributes_for_key(
-            self.coordinator,
-            self._printer_id,
-            self.entity_description.key,
-        )
-        if attrib is not None:
-            return attrib
-        return None
+        """Return device info to attach this button to the integration device."""
+        return build_main_device_info(self.coordinator)

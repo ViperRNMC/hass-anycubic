@@ -5,7 +5,7 @@ navigate nested MQTT JSON without raising KeyError/IndexError.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any, Sequence, Union
 
 
 def get_from_path(data: Any, path: Sequence[Union[str, int]], default: Any = None) -> Any:

@@ -6,30 +6,29 @@ This module exposes two kinds of numbers:
 """
 
 import logging
+import asyncio
+import time
 from typing import Optional
 
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
-    CONNECTION_MODE_LAN,
     DOMAIN,
-    MANUFACTURER,
-    MODEL,
+    NUMBER_DEFINITIONS,
     MULTI_COLOR_BOX_KEY,
 )
-from .descriptions import get_descriptions
+from .helper.device_info import build_ace_device_info, build_main_device_info
 
 
 _LOGGER = logging.getLogger(__name__)
-LAN_NUMBER_DEFINITIONS = get_descriptions(CONNECTION_MODE_LAN, "number")
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up number entities for Anycubic printers.
 
-    Creates static numbers from LAN descriptions and per-box drying numbers.
+    Creates static numbers from NUMBER_DEFINITIONS and per-box drying numbers.
     """
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is None:
@@ -44,20 +43,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.debug("Coordinator async_get_boxes failed; falling back to cached boxes")
 
     # Expand any per-box template definitions using coordinator knowledge
-    expanded_defs = coordinator.expand_definitions(LAN_NUMBER_DEFINITIONS)
-    entities = [AnycubicNumber(coordinator, d) for d in expanded_defs]
+    expanded_defs = coordinator.expand_definitions(NUMBER_DEFINITIONS)
+    entities = [AnycubicNumberEntity(coordinator, d) for d in expanded_defs]
     if entities:
         async_add_entities(entities)
 
     # If no boxes were available, wait for boxes_updated and create per-box numbers
     if not boxes:
         def _on_boxes_updated(boxes_list):
-            expanded = coordinator.expand_definitions(LAN_NUMBER_DEFINITIONS)
+            expanded = coordinator.expand_definitions(NUMBER_DEFINITIONS)
             new_entities: list[NumberEntity] = []
             for d in expanded:
                 # only create per-box entries (they will include box_id)
                 if d.get("box_id") is not None:
-                    new_entities.append(AnycubicNumber(coordinator, d))
+                    new_entities.append(AnycubicNumberEntity(coordinator, d))
             if not new_entities:
                 return
 
@@ -77,28 +76,31 @@ async def async_setup_entry(hass, entry, async_add_entities):
         unsub = async_dispatcher_connect(coordinator.hass, f"{DOMAIN}_boxes_updated", _on_boxes_updated)
 
 
-class AnycubicNumber(CoordinatorEntity, NumberEntity):
+class AnycubicNumberEntity(CoordinatorEntity, NumberEntity):
     """Generic number entity for target temperatures and per-box drying values."""
 
     def __init__(self, coordinator, definition: dict):
         super().__init__(coordinator)
         self.definition = definition
         self._key = definition["key"]
-        self._attr_name = definition.get("name")
-        self._attr_translation_key = self._key
+        self._attr_name = definition["name"]
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
         self._attr_has_entity_name = True
         self._attr_icon = definition.get("icon", "mdi:thermometer")
         self._attr_native_min_value = definition.get("min")
         self._attr_native_max_value = definition.get("max")
         self._attr_native_step = 1
+        self._attr_mode = NumberMode.SLIDER
         # Allow unit override in dynamic defs
         self._attr_native_unit_of_measurement = definition.get("unit", "°C")
         self._box_id: Optional[int] = definition.get("box_id")
         self._kind: Optional[str] = definition.get("kind")
+        self._pending_target_value: int | None = None
+        self._pending_target_until: float = 0.0
+        self._pending_send_task: asyncio.Task | None = None
 
-    @property
-    def native_value(self):
+    def _resolve_reported_value(self):
+        """Resolve the current backend value for this number without optimistic overrides."""
         # Box-specific numbers read from multiColorBox drying_status
         if self._kind and self._box_id is not None:
             boxes = self.coordinator.data.get(MULTI_COLOR_BOX_KEY, {}).get("data", {}).get("multi_color_box", [])
@@ -110,40 +112,159 @@ class AnycubicNumber(CoordinatorEntity, NumberEntity):
                     if self._kind == "drying_duration":
                         return ds.get("duration")
 
-        # Fallback: existing behavior for static number definitions (nozzle/hotbed)
-        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
         key = self.definition.get("data_key")
+        if key in {"target_nozzle_temp", "target_hotbed_temp"}:
+            print_data = self.coordinator.data.get("print", {}).get("data", {})
+            temp_data = self.coordinator.data.get("tempature", {}).get("data", {})
+            if print_data.get(key) is not None:
+                return print_data.get(key)
+            if temp_data.get(key) is not None:
+                return temp_data.get(key)
+
+        temp_report = self.coordinator.data.get("tempature", {}).get("data", {})
         if key and temp_report.get(key) is not None:
             return temp_report.get(key)
         temp_info = self.coordinator.data.get("info", {}).get("data", {}).get("temp", {})
         return temp_info.get(key) if key else None
 
+    @property
+    def native_value(self):
+        reported = self._resolve_reported_value()
+
+        # Keep the user-entered value visible briefly while cloud state catches up.
+        if self._pending_target_value is not None and time.monotonic() < self._pending_target_until:
+            try:
+                if reported is not None and int(reported) == int(self._pending_target_value):
+                    self._pending_target_value = None
+                    self._pending_target_until = 0.0
+                    return reported
+            except (TypeError, ValueError):
+                pass
+            return self._pending_target_value
+
+        if self._pending_target_value is not None:
+            self._pending_target_value = None
+            self._pending_target_until = 0.0
+
+        return reported
+
+    @property
+    def extra_state_attributes(self):
+        key = self.definition.get("data_key")
+        if key == "target_nozzle_temp":
+            temp_data = self.coordinator.data.get("tempature", {}).get("data", {})
+            return {
+                "current": temp_data.get("curr_nozzle_temp"),
+                "target": self.native_value,
+            }
+        if key == "target_hotbed_temp":
+            temp_data = self.coordinator.data.get("tempature", {}).get("data", {})
+            return {
+                "current": temp_data.get("curr_hotbed_temp"),
+                "target": self.native_value,
+            }
+        return None
+
     async def async_set_native_value(self, value):
         try:
-            await self.coordinator.number_set_event(
-                self._key,
-                int(value),
-                box_id=self._box_id,
-                kind=self._kind,
-                data_key=self.definition.get("data_key"),
-            )
+            new_value = int(value)
+
+            if self._kind and self._box_id is not None:
+                # For drying target/duration, publish a setDry payload including both fields
+                boxes = self.coordinator.data.get(MULTI_COLOR_BOX_KEY, {}).get("data", {}).get("multi_color_box", [])
+                current_target = None
+                current_duration = None
+                current_status = 1
+                for b in boxes:
+                    if b.get("id") == self._box_id:
+                        ds = b.get("drying_status", {})
+                        current_target = ds.get("target_temp")
+                        current_duration = ds.get("duration")
+                        current_status = ds.get("status", 1)
+                        break
+
+                if self._kind == "drying_target":
+                    target_val = new_value
+                    duration_val = int(current_duration) if current_duration is not None else 240
+                else:
+                    duration_val = new_value
+                    target_val = int(current_target) if current_target is not None else 45
+
+                payload_data = {
+                    "multi_color_box": [
+                        {
+                            "id": self._box_id,
+                            "drying_status": {
+                                "status": current_status,
+                                "target_temp": target_val,
+                                "duration": duration_val,
+                            },
+                        }
+                    ]
+                }
+                await self.coordinator.async_send_command("multiColorBox", "setDry", payload_data)
+
+                # optimistic update
+                self._attr_native_value = new_value
+                self.async_write_ha_state()
+                return
+
+            # Static numbers: publish via print update as before
+            settings = {self.definition.get("data_key"): new_value}
+            data = {"taskid": "-1", "settings": settings}
+            key = self.definition.get("data_key")
+            if key in {"target_nozzle_temp", "target_hotbed_temp"}:
+                # Debounce typed input so we send only the final value.
+                if self._pending_send_task and not self._pending_send_task.done():
+                    self._pending_send_task.cancel()
+                self._pending_send_task = self.coordinator.hass.async_create_task(
+                    self._async_send_debounced_temperature(key, new_value)
+                )
+
+                self._attr_native_value = new_value
+                self._pending_target_value = new_value
+                self._pending_target_until = time.monotonic() + 8.0
+                self.async_write_ha_state()
+                return
+
+            if key == "target_nozzle_temp":
+                await self.coordinator.async_send_command("print", "setNozzleTemp", {"target_nozzle_temp": new_value})
+            elif key == "target_hotbed_temp":
+                await self.coordinator.async_send_command("print", "setHotbedTemp", {"target_hotbed_temp": new_value})
+            else:
+                await self.coordinator.async_send_command("print", "update", data)
 
             # optimistic update
-            self._attr_native_value = int(value)
+            self._attr_native_value = new_value
+            self._pending_target_value = new_value
+            self._pending_target_until = time.monotonic() + 8.0
             self.async_write_ha_state()
 
         except Exception as err:  # pragma: no cover - defensive
-            _LOGGER.debug("Failed to publish number set %s: %s", self._key, err)
+            _LOGGER.debug("Failed to send number set %s: %s", self._key, err)
+
+    async def _async_send_debounced_temperature(self, key: str, value: int) -> None:
+        """Send the latest typed temperature value after a short debounce delay."""
+        try:
+            await asyncio.sleep(0.35)
+        except asyncio.CancelledError:
+            return
+
+        try:
+            if key == "target_nozzle_temp":
+                await self.coordinator.async_send_command("print", "setNozzleTemp", {"target_nozzle_temp": value})
+            elif key == "target_hotbed_temp":
+                await self.coordinator.async_send_command("print", "setHotbedTemp", {"target_hotbed_temp": value})
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Failed to send debounced temp set %s=%s: %s", key, value, err)
 
     @property
     def device_info(self) -> dict:
         if self._box_id is not None:
-            entry_id = getattr(self.coordinator.config_entry, "entry_id", "unknown")
-            return {"identifiers": {(DOMAIN, f"{entry_id}_ace_pro_box_{self._box_id}")}}
-        return {
-            "identifiers": {(DOMAIN, self.coordinator.config_entry.entry_id)},
-            "name": self.coordinator.config_entry.title,
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "entry_type": "service",
-        }
+            firmware = None
+            for box in self.coordinator.get_boxes():
+                if box.get("id") == self._box_id:
+                    firmware = box.get("firmware")
+                    break
+            return build_ace_device_info(self.coordinator, self._box_id, firmware)
+        return build_main_device_info(self.coordinator)

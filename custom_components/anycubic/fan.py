@@ -1,79 +1,27 @@
 """Fan platform for Anycubic Kobra S1."""
 
-from __future__ import annotations
-
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.fan import FanEntity, FanEntityDescription, FanEntityFeature
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from typing import Any
+
+from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import (
-    CONNECTION_MODE_CLOUD,
-    CONNECTION_MODE_LAN,
-    COORDINATOR,
-    DOMAIN,
-    MANUFACTURER,
-    MODEL,
-    PrinterEntityType,
-)
-from .descriptions import get_descriptions
-from .entity import AnycubicEntity
-from .helper.connection_mode import get_entry_connection_mode
-from .helper.mapper import printer_attributes_for_key, printer_state_for_key
-
-if TYPE_CHECKING:
-    from .coordinator import AnycubicBackendCoordinator
+from .const import DOMAIN, FAN_DEFINITIONS
+from .helper.device_info import build_main_device_info
 
 
 _LOGGER = logging.getLogger(__name__)
-LAN_FAN_DEFINITIONS = get_descriptions(CONNECTION_MODE_LAN, "fan")
-CLOUD_FAN_DEFINITIONS = get_descriptions(CONNECTION_MODE_CLOUD, "fan")
 
 
-@dataclass(frozen=True)
-class AnycubicCloudFanEntityDescription(FanEntityDescription):
-    """Describes Anycubic Cloud fan entity."""
-
-    printer_entity_type: PrinterEntityType | None = None
-
-
-CLOUD_FAN_TYPES: list[AnycubicCloudFanEntityDescription] = [
-    AnycubicCloudFanEntityDescription(**item)
-    for item in CLOUD_FAN_DEFINITIONS
-]
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
+async def async_setup_entry(hass, entry, async_add_entities):
     """Set up Anycubic fan entities for the given config entry.
 
     The coordinator instance is pulled from hass.data and used to construct
-    one AnycubicFanEntity per centralized LAN fan definition.
+    one AnycubicFanEntity per definition in ``FAN_DEFINITIONS``.
     """
-    mode = get_entry_connection_mode(entry)
-    if mode == CONNECTION_MODE_CLOUD:
-        await _setup_cloud_fans(hass, entry, async_add_entities)
-        return
-
-    await _setup_lan_fans(hass, entry, async_add_entities)
-
-
-async def _setup_lan_fans(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    async_add_entities([AnycubicFanEntity(coordinator, d) for d in LAN_FAN_DEFINITIONS])
+    async_add_entities([AnycubicFanEntity(coordinator, d) for d in FAN_DEFINITIONS])
 
     # Request initial fan status specifically from the device. Platforms
     # should request only the topics they need to avoid unnecessary queries.
@@ -81,21 +29,6 @@ async def _setup_lan_fans(
         await coordinator.async_query_topic("fan")
     except Exception:
         _LOGGER.debug("Failed to query fan on setup")
-
-
-async def _setup_cloud_fans(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    coordinator: AnycubicBackendCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
-
-    coordinator.add_entities_for_seen_printers(
-        async_add_entities=async_add_entities,
-        entity_constructor=AnycubicCloudFan,
-        platform=Platform.FAN,
-        available_descriptors=CLOUD_FAN_TYPES,
-    )
 
 
 class AnycubicFanEntity(CoordinatorEntity, FanEntity):
@@ -113,8 +46,7 @@ class AnycubicFanEntity(CoordinatorEntity, FanEntity):
         super().__init__(coordinator)
         self.definition = definition
         self._key = definition["key"]
-        self._attr_name = definition.get("name")
-        self._attr_translation_key = self._key
+        self._attr_name = definition["name"]
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
         self._data_key = definition.get("data_key")
         self._attr_icon = definition.get("icon", "mdi:fan")
@@ -139,8 +71,14 @@ class AnycubicFanEntity(CoordinatorEntity, FanEntity):
         fan_data = self.coordinator.data.get("fan", {}).get("data", {})
         print_data = self.coordinator.data.get("print", {}).get("data", {})
         # Use the configured data key, allowing 'print' topic to override
-        # 'fan' topic
-        return int(print_data.get(self._data_key, fan_data.get(self._data_key, 0)))
+        # 'fan' topic, but treat missing/None values as 0.
+        value = print_data.get(self._data_key)
+        if value is None:
+            value = fan_data.get(self._data_key)
+        try:
+            return int(value if value is not None else 0)
+        except (TypeError, ValueError):
+            return 0
 
     async def async_set_percentage(self, percentage: int):
         """Set the fan speed to the requested percentage."""
@@ -164,85 +102,23 @@ class AnycubicFanEntity(CoordinatorEntity, FanEntity):
         ``data``. We assemble the payload using the current known values and
         override the targeted fan with the requested percentage.
         """
+        # Send only the targeted key. Sending all fan keys creates extra cloud
+        # orders and can trigger rate-limit/auth churn while dragging sliders.
+        fan_data = {
+            self._data_key: int(percentage),
+        }
+
         try:
-            await self.coordinator.fan_set_event(self._key, self._data_key, int(percentage))
+            _LOGGER.debug("Publishing fan command via coordinator: %s", fan_data)
+            await self.coordinator.async_send_command("fan", "auto", fan_data)
 
             # optimistic update for UI
             self._attr_percentage = int(percentage)
             self.async_write_ha_state()
         except Exception as err:  # pragma: no cover - defensive
-            _LOGGER.debug("Failed to publish fan command: %s", err)
+            _LOGGER.debug("Failed to send fan command: %s", err)
 
     @property
     def device_info(self) -> dict:
         """Return the device info mapping for the device registry."""
-        return {
-            "identifiers": {(DOMAIN, self.coordinator.config_entry.entry_id)},
-            "name": self.coordinator.config_entry.title,
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "entry_type": "service",
-        }
-
-
-class AnycubicCloudFan(AnycubicEntity, FanEntity):
-    """Cloud fan entity mapped from cloud printer state."""
-
-    entity_description: AnycubicCloudFanEntityDescription
-
-    _attr_percentage_step = 1
-    _attr_supported_features = (
-        FanEntityFeature.SET_SPEED | FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
-    )
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        coordinator: AnycubicBackendCoordinator,
-        printer_id: int,
-        entity_description: AnycubicCloudFanEntityDescription,
-    ) -> None:
-        super().__init__(hass, coordinator, printer_id, entity_description)
-        self._attr_icon = entity_description.icon or "mdi:fan"
-
-    @property
-    def percentage(self) -> int | None:
-        state = printer_state_for_key(
-            self.coordinator,
-            self._printer_id,
-            self.entity_description.key,
-        )
-        if state is None:
-            return None
-        try:
-            return int(state)
-        except Exception:
-            return None
-
-    @property
-    def is_on(self) -> bool:
-        pct = self.percentage
-        return pct is not None and pct > 0
-
-    async def async_set_percentage(self, percentage: int) -> None:
-        await self.coordinator.fan_set_event(
-            self._printer_id,
-            self.entity_description.key,
-            int(percentage),
-        )
-
-    async def async_turn_on(self, percentage: int | None = None, preset_mode: str | None = None, **kwargs: Any) -> None:
-        if percentage is None:
-            percentage = 100
-        await self.async_set_percentage(int(percentage))
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.async_set_percentage(0)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        return printer_attributes_for_key(
-            self.coordinator,
-            self._printer_id,
-            self.entity_description.key,
-        )
+        return build_main_device_info(self.coordinator)

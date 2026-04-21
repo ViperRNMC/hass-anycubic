@@ -191,7 +191,7 @@ def nearest_color_name(color: Union[RGB, ColorGroup, None]) -> str:
         elif h < 195:
             base = "Cyan"
         elif h < 255:
-            base = "Blue2"
+            base = "Blue"
         elif h < 285:
             base = "Purple"
         elif h < 330:

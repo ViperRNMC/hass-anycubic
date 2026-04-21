@@ -1,83 +1,43 @@
-"""Switch platform for Anycubic with LAN and Cloud support."""
+"""Clean generic switch platform for Anycubic Ace Pro features.
+
+One class `AnycubicSwitchEntity` is driven by `SWITCH_DEFINITIONS` in `const.py`.
+Supports passing optional parameters for setDry (target_temp, duration).
+"""
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
-from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .entity import AnycubicEntity
-from .helper.mapper import printer_state_for_key
-from .descriptions import get_descriptions
-from .helper.connection_mode import get_entry_connection_mode
 from .const import (
-    ACE_PRO_DEVICE_BASE,
-    CONNECTION_MODE_CLOUD,
-    CONNECTION_MODE_LAN,
-    COORDINATOR,
+    DOMAIN,
+    MULTI_COLOR_BOX_KEY,
+    SWITCH_DEFINITIONS,
     DEVICE_TYPE_ACE_PRO,
     DEVICE_TYPE_EXTFILBOX,
-    DOMAIN,
-    EXTFILBOX_DEVICE_BASE,
-    MANUFACTURER,
-    MODEL,
-    MULTI_COLOR_BOX_KEY,
-    PrinterEntityType,
+)
+from .helper.device_info import (
+    build_ace_device_info,
+    build_extfilbox_device_info,
+    build_main_device_info,
 )
 
-if TYPE_CHECKING:
-    from .coordinator import AnycubicBackendCoordinator
-
 _LOGGER = logging.getLogger(__name__)
-LAN_SWITCH_DEFINITIONS = get_descriptions(CONNECTION_MODE_LAN, "switch")
 
 
-@dataclass(frozen=True)
-class AnycubicSwitchEntityDescription(
-    SwitchEntityDescription
-):
-    """Describes Anycubic Cloud switch entity."""
-    printer_entity_type: PrinterEntityType | None = None
-
-
-SWITCH_TYPES: list[AnycubicSwitchEntityDescription] = list([
-    AnycubicSwitchEntityDescription(**item)
-    for item in get_descriptions(CONNECTION_MODE_CLOUD, "switch")
-])
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up Anycubic switches for a config entry."""
-    mode = get_entry_connection_mode(entry)
-    if mode == CONNECTION_MODE_CLOUD:
-        await _setup_cloud_switches(hass, entry, async_add_entities)
-        return
-
-    await _setup_lan_switches(hass, entry, async_add_entities)
-
-
-async def _setup_lan_switches(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
+async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is None:
         _LOGGER.error("Coordinator for %s not found", entry.entry_id)
         return
 
+    # Force-fetch multiColorBox data so switches have initial state. If MQTT
+    # isn't ready, async_get_boxes will fall back to cached boxes (or empty).
     try:
         boxes = await coordinator.async_get_boxes()
     except Exception:
@@ -85,25 +45,27 @@ async def _setup_lan_switches(
         _LOGGER.debug("Coordinator async_get_boxes failed; falling back to cached boxes")
 
     entities: list[SwitchEntity] = []
-    expanded_switches = coordinator.expand_definitions(LAN_SWITCH_DEFINITIONS)
-    for definition in expanded_switches:
-        if definition.get("device_type") == DEVICE_TYPE_ACE_PRO:
-            box_id = definition.get("box_id")
-            entities.append(AnycubicLanSwitch(coordinator, box_id, definition))
+    # Expand per-box switch templates using coordinator information
+    expanded_switches = coordinator.expand_definitions(SWITCH_DEFINITIONS)
+    for d in expanded_switches:
+        if d.get("device_type") == DEVICE_TYPE_ACE_PRO:
+            box_id = d.get("box_id")
+            entities.append(AnycubicSwitchEntity(coordinator, box_id, d))
         else:
-            entities.append(AnycubicLanSwitch(coordinator, None, definition))
+            # non-boxed switches (if any)
+            entities.append(AnycubicSwitchEntity(coordinator, None, d))
 
+    # If no boxes were available, wait for boxes_updated and create per-box switches
     if not boxes:
-
         def _on_boxes_updated(boxes_list):
-            expanded = coordinator.expand_definitions(LAN_SWITCH_DEFINITIONS)
+            expanded = coordinator.expand_definitions(SWITCH_DEFINITIONS)
             new_entities: list[SwitchEntity] = []
-            for definition in expanded:
-                if definition.get("device_type") == DEVICE_TYPE_ACE_PRO:
-                    box_id = definition.get("box_id")
-                    new_entities.append(AnycubicLanSwitch(coordinator, box_id, definition))
+            for d in expanded:
+                if d.get("device_type") == DEVICE_TYPE_ACE_PRO:
+                    box_id = d.get("box_id")
+                    new_entities.append(AnycubicSwitchEntity(coordinator, box_id, d))
                 else:
-                    new_entities.append(AnycubicLanSwitch(coordinator, None, definition))
+                    new_entities.append(AnycubicSwitchEntity(coordinator, None, d))
             if not new_entities:
                 return
 
@@ -119,158 +81,135 @@ async def _setup_lan_switches(
 
             coordinator.hass.loop.call_soon_threadsafe(_add_and_unsub)
 
-        unsub = async_dispatcher_connect(
-            coordinator.hass,
-            f"{DOMAIN}_boxes_updated",
-            _on_boxes_updated,
-        )
+        unsub = async_dispatcher_connect(coordinator.hass, f"{DOMAIN}_boxes_updated", _on_boxes_updated)
 
     async_add_entities(entities)
 
 
-async def _setup_cloud_switches(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    coordinator: AnycubicBackendCoordinator = hass.data[DOMAIN][entry.entry_id][
-        COORDINATOR
-    ]
-    coordinator.add_entities_for_seen_printers(
-        async_add_entities=async_add_entities,
-        entity_constructor=AnycubicCloudSwitch,
-        platform=Platform.SWITCH,
-        available_descriptors=SWITCH_TYPES,
-    )
-
-
-class AnycubicLanSwitch(CoordinatorEntity, SwitchEntity):
-    """Generic LAN switch created from SWITCH_DEFINITIONS."""
+class AnycubicSwitchEntity(CoordinatorEntity, SwitchEntity):
+    """Generic switch created from a SWITCH_DEFINITIONS entry for a box."""
 
     def __init__(self, coordinator, box_id: int, definition: dict):
         super().__init__(coordinator)
         self.box_id = box_id
         self.definition = definition
         self._key = definition["key"]
-        self._attr_name = definition.get("name")
-        self._attr_translation_key = self._key
+        self._attr_name = definition["name"]
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{self._key}"
         self._attr_has_entity_name = True
         self._box_id: Optional[int] = definition.get("box_id")
 
+    def _render_template(self, template: dict, **params) -> dict:
+        s = json.dumps(template)
+        s = s.replace("{box_id}", str(self.box_id))
+        # support optional params like target_temp and duration
+        for k, v in params.items():
+            s = s.replace(f"{{{k}}}", str(v))
+        return json.loads(s)
+
+    async def _publish(self, action: str, data: dict) -> None:
+        try:
+            await self.coordinator.async_send_command(self.definition.get("type"), action, data)
+        except Exception as err:  # pragma: no cover - defensive
+            _LOGGER.debug("Command publish failed for switch %s: %s", self._key, err)
+
     def _find_box(self) -> dict | None:
-        boxes = self.coordinator.data.get(MULTI_COLOR_BOX_KEY, {}).get("data", {}).get(
-            "multi_color_box", []
-        )
-        for box in boxes:
-            if box.get("id") == self.box_id:
-                return box
+        boxes = self.coordinator.data.get(MULTI_COLOR_BOX_KEY, {}).get("data", {}).get("multi_color_box", [])
+        for b in boxes:
+            if b.get("id") == self.box_id:
+                return b
         return None
 
     @property
     def is_on(self) -> bool:
-        if self._key == "manual_mqtt_connection_enabled":
-            return bool(getattr(self.coordinator.mqtt, "debug_logging", False))
-
         box = self._find_box()
         if not box:
             return False
         key = self.definition.get("key")
+        # support both base keys (ace_pro_drying) and expanded keys (ace_pro_drying_0)
         if key and "drying" in key:
-            drying_status = box.get("drying_status", {})
-            return bool(drying_status.get("status") == 1)
+            ds = box.get("drying_status", {})
+            return bool(ds.get("status") == 1)
         if key and ("auto_feed" in key or "autofeed" in key):
             return bool(box.get("auto_feed") == 1)
         return False
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.switch_on_event(
-            None,
-            self._key,
-            box_id=self.box_id,
-            target_temp=kwargs.get("target_temp"),
-            duration=kwargs.get("duration"),
-        )
+        # For drying we allow passing `target_temp` and `duration` in kwargs
+        params = {}
+        if "target_temp" in kwargs:
+            params["target_temp"] = kwargs.get("target_temp")
+        if "duration" in kwargs:
+            params["duration"] = kwargs.get("duration")
+
+        key = self.definition.get("key")
+        if key and "drying" in key:
+            box = self._find_box() or {}
+            drying_status = box.get("drying_status") or {}
+
+            if params.get("target_temp") is None:
+                target_temp = drying_status.get("target_temp")
+                try:
+                    params["target_temp"] = int(target_temp)
+                except (TypeError, ValueError):
+                    params["target_temp"] = 35
+
+            if params.get("duration") is None:
+                duration = drying_status.get("duration")
+                try:
+                    params["duration"] = int(duration)
+                except (TypeError, ValueError):
+                    params["duration"] = 1
+
+        data_template = self.definition.get("data_template_on") or {}
+        data = self._render_template(data_template, **params)
+        action = self.definition.get("action_on")
+        await self._publish(action, data)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.switch_off_event(
-            None,
-            self._key,
-            box_id=self.box_id,
-        )
+        data_template = self.definition.get("data_template_off") or {}
+        data = self._render_template(data_template)
+        action = self.definition.get("action_off")
+        await self._publish(action, data)
 
     @property
     def extra_state_attributes(self) -> dict:
-        attributes: dict = {}
+        attrs: dict = {}
         box = self._find_box()
         if not box:
-            return attributes
+            return attrs
         key = self.definition.get("key")
         if key and "drying" in key:
-            drying_status = box.get("drying_status", {})
-            attributes["drying_status"] = drying_status.get("status")
-            attributes["drying_target_temp"] = drying_status.get("target_temp")
-            attributes["target_temp"] = drying_status.get("target_temp")
-            attributes["drying_duration"] = drying_status.get("duration")
-            attributes["duration"] = drying_status.get("duration")
+            ds = box.get("drying_status", {})
+            attrs["drying_status"] = ds.get("status")
+            # Expose both legacy and simple attribute names for compatibility
+            attrs["drying_target_temp"] = ds.get("target_temp")
+            attrs["target_temp"] = ds.get("target_temp")
+            attrs["drying_duration"] = ds.get("duration")
+            attrs["duration"] = ds.get("duration")
         if key and ("auto_feed" in key or "autofeed" in key):
-            attributes["auto_feed"] = box.get("auto_feed")
-        return attributes
+            attrs["auto_feed"] = box.get("auto_feed")
+        return attrs
 
     @property
     def device_info(self) -> dict:
-        device_type = self.definition.get("device_type")
-        entry_id = getattr(self.coordinator.config_entry, "entry_id", "unknown")
+        """Get device info based on sensor definition device type."""
+        dt = self.definition.get("device_type")
 
-        if device_type == DEVICE_TYPE_ACE_PRO:
-            return {
-                "identifiers": {(DOMAIN, f"{entry_id}_ace_pro_box_{self.box_id}")},
-                **ACE_PRO_DEVICE_BASE,
-            }
-        if device_type == DEVICE_TYPE_EXTFILBOX:
-            return {
-                "identifiers": {(DOMAIN, f"{entry_id}_extfilbox")},
-                **EXTFILBOX_DEVICE_BASE,
-            }
-
-        return {
-            "identifiers": {(DOMAIN, entry_id)},
-            "name": self.coordinator.config_entry.title,
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "entry_type": "service",
-        }
+        if dt == DEVICE_TYPE_ACE_PRO:
+            return build_ace_device_info(self.coordinator, int(self.box_id))
+        elif dt == DEVICE_TYPE_EXTFILBOX:
+            return build_extfilbox_device_info(self.coordinator)
+        else:
+            return build_main_device_info(self.coordinator)
 
     def _find_box_by_id(self, top_level_data: dict, box_id: int) -> Optional[dict]:
+        """Find a multicolor box by its `id` field inside coordinator data.
+
+        top_level_data is the dict under MULTI_COLOR_BOX_KEY (e.g. coordinator.data[MULTI_COLOR_BOX_KEY]).
+        """
         boxes = top_level_data.get("data", {}).get("multi_color_box", [])
-        for box in boxes:
-            if box.get("id") == box_id:
-                return box
+        for b in boxes:
+            if b.get("id") == box_id:
+                return b
         return None
-
-
-class AnycubicCloudSwitch(AnycubicEntity, SwitchEntity):
-    """Representation of an Anycubic Cloud switch."""
-
-    entity_description: AnycubicSwitchEntityDescription
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        coordinator: AnycubicBackendCoordinator,
-        printer_id: int,
-        entity_description: AnycubicSwitchEntityDescription,
-    ) -> None:
-        super().__init__(hass, coordinator, printer_id, entity_description)
-
-    @property
-    def is_on(self) -> bool:
-        return bool(
-            printer_state_for_key(self.coordinator, self._printer_id, self.entity_description.key)
-        )
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.switch_on_event(self._printer_id, self.entity_description.key)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.switch_off_event(self._printer_id, self.entity_description.key)
