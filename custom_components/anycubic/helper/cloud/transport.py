@@ -17,8 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from .auth import AnycubicAuthMode
 from .mqtt_api import AnycubicMQTTAPI
 from .. import ErrorsSystem
-from ...const import CONF_PRINTER_ID, CONF_USER_AUTH_MODE, CONF_USER_DEVICE_ID, CONF_USER_TOKEN, DOMAIN
-from ...const import CLOUD_AUTH_MODE_ANDROID, CLOUD_AUTH_MODE_SLICER
+from ...const import DOMAIN
 from ..tbase import AnycubicTransport
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,11 +96,11 @@ class CloudTransport(AnycubicTransport):
         await self.async_query_topic("initial")
 
     async def _setup_api(self) -> None:
-        token = _normalize_credential(self._entry.data.get(CONF_USER_TOKEN))
+        token = _normalize_credential(self._entry.data.get("cloud_token"))
         if not token:
             raise ValueError(ErrorsSystem.cloud_requires_token)
 
-        normalized_device_id = _normalize_credential(self._entry.data.get(CONF_USER_DEVICE_ID))
+        normalized_device_id = _normalize_credential(self._entry.data.get("cloud_device_id"))
 
         cookie_jar = CookieJar(unsafe=True)
         websession = async_create_clientsession(self._hass, cookie_jar=cookie_jar)
@@ -117,13 +116,13 @@ class CloudTransport(AnycubicTransport):
         # also emit raw MQTT publish/receive payloads.
         self._api.set_mqtt_log_all_messages(_LOGGER.isEnabledFor(logging.DEBUG))
 
-        auth_mode_raw = self._entry.data.get(CONF_USER_AUTH_MODE)
+        auth_mode_raw = self._entry.data.get("cloud_auth_mode")
         configured_mode: AnycubicAuthMode | None = None
         if isinstance(auth_mode_raw, str):
             mode_name = auth_mode_raw.strip().lower()
-            if mode_name == CLOUD_AUTH_MODE_SLICER:
+            if mode_name == "option_slicer":
                 configured_mode = AnycubicAuthMode.SLICER
-            elif mode_name == CLOUD_AUTH_MODE_ANDROID:
+            elif mode_name == "option_android":
                 configured_mode = AnycubicAuthMode.ANDROID
         elif auth_mode_raw is not None:
             try:
@@ -165,12 +164,12 @@ class CloudTransport(AnycubicTransport):
             raise ValueError(ErrorsSystem.cloud_auth_failed)
 
         updates: dict[str, Any] = {}
-        if selected_mode is not None and self._entry.data.get(CONF_USER_AUTH_MODE) != selected_mode.name.lower():
-            updates[CONF_USER_AUTH_MODE] = selected_mode.name.lower()
-        if token != self._entry.data.get(CONF_USER_TOKEN):
-            updates[CONF_USER_TOKEN] = token
-        if normalized_device_id != self._entry.data.get(CONF_USER_DEVICE_ID, ""):
-            updates[CONF_USER_DEVICE_ID] = normalized_device_id
+        if selected_mode is not None and self._entry.data.get("cloud_auth_mode") != selected_mode.name.lower():
+            updates["cloud_auth_mode"] = selected_mode.name.lower()
+        if token != self._entry.data.get("cloud_token"):
+            updates["cloud_token"] = token
+        if normalized_device_id != self._entry.data.get("cloud_device_id", ""):
+            updates["cloud_device_id"] = normalized_device_id
         if updates:
             self._update_entry_data(updates)
 
@@ -186,7 +185,7 @@ class CloudTransport(AnycubicTransport):
         if not self._printers:
             raise ValueError(ErrorsSystem.no_cloud_printers)
 
-        configured_printer_id = self._entry.data.get(CONF_PRINTER_ID)
+        configured_printer_id = self._entry.data.get("printer_id")
         self._selected_printer = None
         if configured_printer_id is not None:
             for printer in self._printers:
@@ -198,8 +197,8 @@ class CloudTransport(AnycubicTransport):
             self._selected_printer = self._printers[0]
 
         selected_printer_id = getattr(self._selected_printer, "id", None)
-        if selected_printer_id is not None and str(self._entry.data.get(CONF_PRINTER_ID, "")) != str(selected_printer_id):
-            self._update_entry_data({CONF_PRINTER_ID: selected_printer_id})
+        if selected_printer_id is not None and str(self._entry.data.get("printer_id", "")) != str(selected_printer_id):
+            self._update_entry_data({"printer_id": selected_printer_id})
 
         self._api.mqtt_add_subscribed_printer(self._selected_printer)
         try:

@@ -16,7 +16,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import BINARY_DEFINITIONS, DOMAIN, MSG_TRANSLATIONS
+from .const import BINARY_DEFINITIONS, DOMAIN
 from .helper.device_info import build_main_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -148,10 +148,8 @@ class AnycubicBinarySensorEntity(CoordinatorEntity, BinarySensorEntity):
         if dtype == "print_problem":
             data = self.coordinator.data.get("print", {})
             text = data.get("msg")
-            translated = None
-            if text:
-                translated = MSG_TRANSLATIONS.get(str(text).strip())
-            return {"code": data.get("code"), "text": text, "text_translated": translated}
+            # Translations moved to translations/*.json; leave translated empty here.
+            return {"code": data.get("code"), "text": text, "text_translated": None}
         if dtype == "nozzle_heating":
             tdata = self.coordinator.data.get("tempature", {})
             t = tdata.get("data") or {}

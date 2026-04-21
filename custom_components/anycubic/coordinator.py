@@ -13,7 +13,6 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
-    CONF_CONNECTION_MODE,
     CONNECTION_MODE_CLOUD,
     CONNECTION_MODE_LAN,
     DEVICE_TYPE_ACE_PRO,
@@ -39,7 +38,7 @@ class AnycubicCoordinator(DataUpdateCoordinator):
         self.config_entry = entry
         self._transport = transport
         self._boxes_logged = False
-        self.mode: str = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
+        self.mode: str = entry.data.get("connection_mode", CONNECTION_MODE_LAN)
         self.data: dict[str, Any] = {}
         self._last_state_signature: str | None = None
         self._pending_update_count = 0
@@ -286,7 +285,7 @@ class AnycubicCoordinator(DataUpdateCoordinator):
 
 async def async_create_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> AnycubicCoordinator:
     """Create and initialize coordinator with LAN or Cloud transport."""
-    mode = entry.data.get(CONF_CONNECTION_MODE, CONNECTION_MODE_LAN)
+    mode = entry.data.get("connection_mode", CONNECTION_MODE_LAN)
 
     if mode == CONNECTION_MODE_CLOUD:
         from .helper.cloud.transport import CloudTransport

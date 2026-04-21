@@ -6,13 +6,10 @@ from typing import Any
 from homeassistant.helpers import device_registry as dr
 
 from ..const import (
-    ACE_PRO_DEVICE_BASE,
-    CONF_CONNECTION_MODE,
-    CONF_PRINTER_ID,
-    CONF_USER_DEVICE_ID,
     CONNECTION_MODE_CLOUD,
     DOMAIN,
     EXTFILBOX_DEVICE_BASE,
+    ACE_PRO_DEVICE_BASE,
     MANUFACTURER,
     MODEL,
 )
@@ -42,9 +39,9 @@ def build_main_device_info(coordinator) -> dict[str, Any]:
 
     printer_id = (
         info_data.get("printer_id")
-        or entry.data.get(CONF_PRINTER_ID)
+        or entry.data.get("printer_id")
         or entry.data.get("deviceId")
-        or entry.data.get(CONF_USER_DEVICE_ID)
+        or entry.data.get("cloud_device_id")
     )
     serial_number = (
         info_data.get("serial_number")
@@ -83,7 +80,7 @@ def build_main_device_info(coordinator) -> dict[str, Any]:
         hardware_version = str(printer_id)
 
     configuration_url = None
-    if entry.data.get(CONF_CONNECTION_MODE) != CONNECTION_MODE_CLOUD:
+    if entry.data.get("connection_mode") != CONNECTION_MODE_CLOUD:
         config_host = entry.data.get("host") or ip_address
         if config_host:
             configuration_url = f"http://{config_host}"

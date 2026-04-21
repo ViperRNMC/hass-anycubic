@@ -46,22 +46,17 @@ MANUFACTURER = "Anycubic"
 MODEL = "Kobra S1"
 
 # Connection modes
+# Use simple canonical values used across the codebase and config flow.
 CONNECTION_MODE_LAN = "lan"
 CONNECTION_MODE_CLOUD = "cloud"
 
 # ============================================================================
 # CONFIG ENTRY KEYS
 # ============================================================================
-
-CONF_USER_TOKEN = "user_token"
-CONF_USER_AUTH_MODE = "user_auth_mode"
-CONF_USER_DEVICE_ID = "user_device_id"
-CONF_PRINTER_ID = "printer_id"
-CONF_CONNECTION_MODE = "connection_mode"
-
-# Cloud authentication mode values
-CLOUD_AUTH_MODE_SLICER = "slicer"
-CLOUD_AUTH_MODE_ANDROID = "android"
+# Note: cloud auth mode option keys are intentionally referenced as literals
+# in the config flow to ensure Home Assistant picks up translation keys
+# from the `translations/*.json` files. Do not reintroduce these constants
+# unless you intend to use them across multiple modules.
 
 # ============================================================================
 # DEVICE TYPES & IDENTIFIERS
@@ -312,13 +307,7 @@ from .definitions import (  # noqa: E402, F401
     SWITCH_DEFINITIONS,
 )
 
-# Local translation table for common device messages
-MSG_TRANSLATIONS = {
-    "耗材不足": "Insufficient supplies",
-    "设备忙": "Device busy",
-    "温度过高": "Temperature too high",
-    "用户发起": "User initiated",
-}
+# NOTE: Message translations moved to translations/*.json (en/nl).
 
 # ============================================================================
 # PUBLIC EXPORTS
@@ -332,15 +321,8 @@ __all__ = [
     # Connection
     "CONNECTION_MODE_LAN",
     "CONNECTION_MODE_CLOUD",
-    # Config keys
-    "CONF_USER_TOKEN",
-    "CONF_USER_AUTH_MODE",
-    "CONF_USER_DEVICE_ID",
-    "CONF_PRINTER_ID",
-    "CONF_CONNECTION_MODE",
-    # Auth modes
-    "CLOUD_AUTH_MODE_SLICER",
-    "CLOUD_AUTH_MODE_ANDROID",
+    # (config-entry keys moved into the config flow as literals)
+    # Auth modes (referenced as literals in config flow)
     # Device types
     "DEVICE_TYPE_ACE_PRO",
     "DEVICE_TYPE_EXTFILBOX",
@@ -403,5 +385,5 @@ __all__ = [
     "SELECT_DEFINITIONS",
     "SENSOR_DEFINITIONS",
     "SWITCH_DEFINITIONS",
-    "MSG_TRANSLATIONS",
+    # message translations moved to translations/*.json
 ]

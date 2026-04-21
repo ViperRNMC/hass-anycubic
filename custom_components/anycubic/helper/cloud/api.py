@@ -50,17 +50,17 @@ class AnycubicAPIBase:
         try:
             tokens_ok = await self.check_api_tokens()
         except Exception as e:
-            logger.error("[Anycubic] get_printers: auth token check failed: %s", e)
+            logger.debug("[Anycubic] get_printers: auth token check failed: %s", e)
             raise
         if not tokens_ok:
-            logger.error("[Anycubic] get_printers: authentication required or tokens expired")
+            logger.debug("[Anycubic] get_printers: authentication required or tokens expired")
             raise AnycubicAuthError(ErrorsAuth.login_required)
 
         resp = await self._fetch_api_resp(endpoint=API_ENDPOINT.printer_get_printers)
-        logger.error("[Anycubic] get_printers: raw response=%s", resp)
+        logger.debug("[Anycubic] get_printers: raw response=%s", resp)
         if not resp or 'data' not in resp or not isinstance(resp['data'], list):
             # Provide more context in the error to aid debugging
-            logger.error("[Anycubic] get_printers: unexpected response format: %s", resp)
+            logger.debug("[Anycubic] get_printers: unexpected response format: %s", resp)
             raise AnycubicAPIParsingError("Failed to fetch printers or invalid response format.")
         return resp['data']
 
@@ -86,8 +86,8 @@ class AnycubicAPIBase:
         url = "https://cloud.anycubic.com/v3/public/login"
         async with self._session.post(url, json=payload, headers=headers) as resp:
             data = await resp.json()
-        logger.error("[Anycubic] Email login: sent payload=%s", payload)
-        logger.error("[Anycubic] Email login: server response=%s", data)
+        logger.debug("[Anycubic] Email login: sent payload=%s", payload)
+        logger.debug("[Anycubic] Email login: server response=%s", data)
         if not data or data.get("code") != 1 or not data.get("data"):
             msg = data.get("msg") if data else "No response"
             logger.error("[Anycubic] Email login FAILED: %s", msg)
@@ -101,7 +101,7 @@ class AnycubicAPIBase:
         self.set_authentication(auth_token=token, auth_mode=None, device_id=None)
         self.anycubic_auth.set_api_user_email(user.get("user_email"))
         self.anycubic_auth.set_api_user_id(user.get("id"))
-        logger.error("[Anycubic] Email login: success, user=%s", user)
+        logger.debug("[Anycubic] Email login: success, user=%s", user)
     __slots__ = (
         "_base_url",
         "_public_api_root",
@@ -246,7 +246,7 @@ class AnycubicAPIBase:
         # Remove any keys that are not strings to avoid aiohttp serialization errors
         invalid_keys = [k for k in headers.keys() if not isinstance(k, str)]
         if invalid_keys:
-            self._log_to_error(f"Dropping invalid header keys: {invalid_keys}")
+            self._log_to_warn(f"Dropping invalid header keys: {invalid_keys}")
             headers = {k: v for k, v in headers.items() if isinstance(k, str)}
         # Final fallback: coerce all header keys to strings to be safe.
         try:
@@ -282,7 +282,7 @@ class AnycubicAPIBase:
         try:
             # Debug: log full headers right before sending request
             try:
-                self._log_to_debug(f"Sending request to {url} with headers: {headers!r}")
+                self._log_to_debug(f"Sending request to {url} with headers: {list(headers.keys())!r}")
             except Exception:
                 pass
 
@@ -436,7 +436,7 @@ class AnycubicAPIBase:
     async def _get_user_token_with_access_token(self) -> None:
         params = self.anycubic_auth.auth_access_token_payload
         logger = self._get_logger()
-        logger.error("[Anycubic] Access-token login: sending payload=%s", params)
+        logger.debug("[Anycubic] Access-token login: sending payload=%s", params)
         # Force correct POST as form-data, never set Content-Type
         url = self._build_api_url(API_ENDPOINT.auth_sig_token)
         # Build headers using computed auth headers (Xx-*) plus any web headers
@@ -458,7 +458,7 @@ class AnycubicAPIBase:
                 data = await resp.json()
             except Exception:
                 data = await resp.text()
-        logger.error("[Anycubic] Access-token login: server response=%s", data)
+        logger.debug("[Anycubic] Access-token login: server response=%s", data)
         if not data or not data.get('data'):
             server_message = data.get('msg') if isinstance(data, dict) else str(data)
             error_message = ErrorsAuth.access_token_login_failed.format(server_message)
@@ -471,13 +471,13 @@ class AnycubicAPIBase:
         # Set user info (email, id) for MQTT login
         if 'user' in data['data']:
             user = data['data']['user']
-            logger.error("[Anycubic] Access-token login: user info from server: %s", user)
+            logger.debug("[Anycubic] Access-token login: user info from server: %s", user)
             if 'user_email' in user:
                 self.anycubic_auth.set_api_user_email(user['user_email'])
             if 'id' in user:
                 self.anycubic_auth.set_api_user_id(user['id'])
         else:
-            logger.error("[Anycubic] Access-token login: NO user info in server response!")
+            logger.debug("[Anycubic] Access-token login: NO user info in server response!")
         self._log_to_debug("Logged in and retrieved user token with access_token.")
 
     async def _get_user_token_with_access_token_with_retry(self) -> None:
