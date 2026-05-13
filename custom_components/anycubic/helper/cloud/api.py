@@ -238,11 +238,6 @@ class AnycubicAPIBase:
         if not isinstance(headers, dict):
             self._log_to_error(f"Request headers not a dict: {type(headers)}")
             headers = dict(headers or {})
-        # Log header keys for debugging
-        try:
-            self._log_to_debug(f"Request headers keys: {[ (type(k), k) for k in headers.keys() ]}")
-        except Exception:
-            pass
         # Remove any keys that are not strings to avoid aiohttp serialization errors
         invalid_keys = [k for k in headers.keys() if not isinstance(k, str)]
         if invalid_keys:
@@ -280,12 +275,6 @@ class AnycubicAPIBase:
         response_url = None
 
         try:
-            # Debug: log full headers right before sending request
-            try:
-                self._log_to_debug(f"Sending request to {url} with headers: {list(headers.keys())!r}")
-            except Exception:
-                pass
-
             async with h_coro as resp:
                 if is_json:
                     resp_data: dict[str, Any] | str = await resp.json()
@@ -417,6 +406,18 @@ class AnycubicAPIBase:
         import logging
         return getattr(self, '_logger', logging.getLogger(__name__))
 
+    @staticmethod
+    def _is_rate_limited_message(message: Any) -> bool:
+        """Return True for known Anycubic throttling messages."""
+        msg = str(message or "")
+        msg_lower = msg.lower()
+        return (
+            "too frequent" in msg_lower
+            or "too many requests" in msg_lower
+            or "request too frequent" in msg_lower
+            or "请求过于频繁" in msg
+        )
+
     def get_auth_config_dict(self) -> dict[str, Any]:
         self._tokens_changed = False
 
@@ -461,6 +462,12 @@ class AnycubicAPIBase:
         logger.debug("[Anycubic] Access-token login: server response=%s", data)
         if not data or not data.get('data'):
             server_message = data.get('msg') if isinstance(data, dict) else str(data)
+            if self._is_rate_limited_message(server_message):
+                error_message = ErrorsAPIParsing.api_error_rate_limited
+                logger.warning("[Anycubic] Access-token login throttled by server: %s", server_message)
+                self._log_to_debug(error_message)
+                raise AnycubicAPIParsingError(error_message)
+
             error_message = ErrorsAuth.access_token_login_failed.format(server_message)
             logger.error("[Anycubic] Access-token login FAILED: %s", error_message)
             self._log_to_debug(error_message)
@@ -486,9 +493,9 @@ class AnycubicAPIBase:
             try:
                 await self._get_user_token_with_access_token()
                 return
-            except AnycubicAuthError:
+            except (AnycubicAuthError, AnycubicAPIParsingError):
                 if x < retries - 1:
-                    await asyncio.sleep(ACCESS_TOKEN_LOGIN_RETRY_INTERVAL)
+                    await asyncio.sleep(ACCESS_TOKEN_LOGIN_RETRY_INTERVAL * (x + 1))
                 else:
                     raise
 

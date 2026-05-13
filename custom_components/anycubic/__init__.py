@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -23,9 +24,6 @@ PLATFORMS_LAN = [
     "binary_sensor",
 ]
 
-# Temporary: camera platform is disabled until stream handling is fixed.
-PLATFORMS_LAN_UNLOAD = [*PLATFORMS_LAN, "camera"]
-
 PLATFORMS_CLOUD = [
     "sensor",
     "image",
@@ -37,6 +35,13 @@ PLATFORMS_CLOUD = [
     "number",
     "binary_sensor",
 ]
+
+# Add `update` platform only when the file is present to avoid import errors
+try:
+    if (Path(__file__).parent / "update.py").exists():
+        PLATFORMS_CLOUD.append("update")
+except Exception:
+    pass
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -62,6 +67,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Coordinator shutdown failed during unload", exc_info=True)
 
     mode = entry.data.get("connection_mode", CONNECTION_MODE_LAN)
-    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN_UNLOAD
+    platforms = PLATFORMS_CLOUD if mode == CONNECTION_MODE_CLOUD else PLATFORMS_LAN
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     return unload_ok

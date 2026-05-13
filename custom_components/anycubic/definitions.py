@@ -64,3 +64,9 @@ BINARY_DEFINITIONS = [
     {"name": "Nozzle Heating", "key": "nozzle_heating", "type": "nozzle_heating", "device_class": "heat", "icon": "mdi:printer-3d-nozzle-heat"},
     {"name": "Bed Heating", "key": "bed_heating", "type": "bed_heating", "device_class": "heat"},
 ]
+
+
+UPDATE_DEFINITIONS = [
+    {"name": "Printer Firmware", "key": "printer_firmware", "device_type": "main"},
+    {"name": "ACE Pro Box Firmware", "key": "ace_pro_box_firmware", "device_type": "ace_pro", "per_box": True},
+]

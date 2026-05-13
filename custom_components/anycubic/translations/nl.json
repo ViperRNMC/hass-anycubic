@@ -95,6 +95,23 @@
       "api_error_server_maintenance": "Onverwachte fout bij parseren van Anycubic-antwoord, serveronderhoud?",
       "api_error_user_server_maintenance": "Onverwachte fout bij ophalen gebruikersinfo, serveronderhoud?",
       "api_error_aws": "Onverwachte fout bij parseren van AWS-antwoord: {0}"
+    },
+    "auth": {
+      "missing_auth": "Ontbrekende Anycubic-authenticatiecontext.",
+      "missing_auth_token": "Ontbrekend Anycubic-authenticatietoken.",
+      "set_auth_missing_token": "Authenticatie kan niet worden ingesteld zonder token.",
+      "user_id_md5_tuple_missing_id": "Kan gebruikershash niet opbouwen, gebruikers-ID ontbreekt.",
+      "access_token_login_failed": "Inloggen met access-token mislukt: {0}",
+      "login_required": "Authenticatie vereist. Opnieuw inloggen nodig."
+    },
+    "auth_token_expired": {
+      "invalid_credentials": "Cloud-inloggegevens zijn ongeldig of verlopen."
+    },
+    "system": {
+      "cloud_requires_token": "Cloud-instelling vereist een token.",
+      "cloud_auth_failed": "Cloud-authenticatie mislukt.",
+      "no_cloud_printers": "Geen cloudprinters gevonden voor dit account.",
+      "cloud_mqtt_timeout": "Cloud MQTT-verbinding time-out."
     }
   }
 }
