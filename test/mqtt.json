@@ -1,0 +1,52 @@
+Uitvoeren
+{"type":"print","action":"resume","timestamp":1763377414998,"msgid":"0fc3b670-c3a5-11f0-92ba-a34659edc354","data":{"taskid":"-1"}}
+{"type":"print","action":"pause","timestamp":1763377407725,"msgid":"0b6dc9d0-c3a5-11f0-92ba-a34659edc354","data":{"taskid":"-1"}}
+{"type":"print","action":"stop","timestamp":1763377399823,"msgid":"0738e5a0-c3a5-11f0-92ba-a34659edc354","data":{"taskid":"-1"}}
+
+{"type":"print","action":"update","timestamp":1763377857119,"msgid":"1749def0-c3a6-11f0-92ba-a34659edc354","data":{"taskid":"-1","settings":{"aux_fan_speed_pct":60}}}
+{"type":"print","action":"update","timestamp":1763377812128,"msgid":"fc78ca00-c3a5-11f0-92ba-a34659edc354","data":{"taskid":"-1","settings":{"aux_fan_speed_pct":70}}}
+
+{"type":"multiColorBox","action":"setDry","timestamp":1763377872428,"msgid":"2069d6c0-c3a6-11f0-92ba-a34659edc354","data":{"multi_color_box":[{"id":0,"drying_status":{"status":1,"target_temp":45,"duration":240}}]}}
+{"type":"multiColorBox","action":"setAutoFeed","timestamp":1763377900446,"msgid":"311d0be0-c3a6-11f0-92ba-a34659edc354","data":{"multi_color_box":[{"id":0,"auto_feed":1}]}}
+
+{"type":"fan","action":"auto","timestamp":1763377857406,"msgid":"90368106-2880-49ac-875e-bfabf34eb180","state":"done","code":200,"msg":"","data":{"taskid":"-1","fan_speed_pct":100,"aux_fan_speed_pct":60,"box_fan_level":60}}
+{"type":"fan","action":"auto","timestamp":1763377812410,"msgid":"0a4a988b-c03e-4a3b-9437-9962927475bf","state":"done","code":200,"msg":"","data":{"taskid":"-1","fan_speed_pct":100,"aux_fan_speed_pct":70,"box_fan_level":60}}
+
+
+Error
+na pause/resume error 10107
+{"type":"print","action":"resume","timestamp":1763415139478,"msgid":"5f3a4b77-21ab-4049-a5d8-7af440f4c511","state":"paused","code":10107,"msg":"耗材不足","data":{"curr_layer":0,"filename":"","localtask":"","print_time":637,"progress":100,"remain_time":0,"slicer":"AnycubicSlicer","source_info":{"plate_index":1,"models_from":0,"software_version":"AnycubicSlicerNext 1.3.7.3 20250928154607","slice_paras_process":1,"models":[{"name":"apple_TV_vesa_mount.stl_id_0_copy_0","file_source":0,"mo_file_id":-1}]},"supplies_usage":8279,"taskid":"-1","total_layers":0}}
+
+Reports:
+{"type":"print","action":"resume","timestamp":1763409665762,"msgid":"a8319cb7-da5d-406f-9613-05e00f4b6017","state":"paused","code":10107,"msg":"耗材不足","data":{"curr_layer":0,"filename":"","localtask":"","print_time":545,"progress":100,"remain_time":0,"slicer":"AnycubicSlicer","source_info":{"plate_index":1,"models_from":0,"software_version":"AnycubicSlicerNext 1.3.7.3 20250928154607","slice_paras_process":1,"models":[{"name":"apple_TV_vesa_mount.stl_id_0_copy_0","file_source":0,"mo_file_id":-1}]},"supplies_usage":8279,"taskid":"-1","total_layers":0}}  
+{"type":"light","action":"query","timestamp":1763410027308,"msgid":"42aad31b-549c-448b-b87f-443e00729f39","state":"done","code":200,"msg":"done","data":{"lights":[{"type":2,"status":1,"brightness":100}]}} 
+{"type":"multiColorBox","action":"getInfo","timestamp":1763408809297,"msgid":"d78cb482-a221-42cd-aab0-e34bbcc59cc4","state":"success","code":200,"msg":"done","data":{"multi_color_box":[]}} 
+{"type":"fan","action":"query","timestamp":1763410087337,"msgid":"645b2f4c-39f4-4704-a553-e7691cc59a25","state":"done","code":200,"msg":"done","data":{"aux_fan_speed_pct":0,"box_fan_level":0,"fan_speed_pct":0}} 
+{"type":"tempature","action":"query","timestamp":1763410087339,"msgid":"48220ccb-ccbc-426e-a75f-863c8e669571","state":"done","code":200,"msg":"","data":{"curr_hotbed_temp":18,"curr_nozzle_temp":20,"target_hotbed_temp":0,"target_nozzle_temp":0}} 
+{"type":"peripherie","action":"query","timestamp":1763410147360,"msgid":"b48c8487-9e00-4e76-bb98-16a24f5d9790","state":"done","code":200,"msg":"done","data":{"camera":1,"multiColorBox":0,"udisk":1}} 
+{"type":"video","action":"startCapture","timestamp":1763409606408,"msgid":"aa13cf72-41da-49d1-8af0-c1f285756f7e","state":"initSuccess","code":200,"msg":"","data":null} 
+{"type":"axis","action":"move","timestamp":1763409632733,"msgid":"d31f6671-fac0-489c-9f77-a96f246e89ea","state":"done","code":200,"msg":"done","data":null} 
+{"type":"extfilbox","action":"reportInfo","timestamp":1763410147564,"msgid":"6b4ac6a5-7df0-4177-adfc-99289d39fb32","state":"success","code":200,"msg":"done","data":{"type":"PLA","color":[0,156,189],"loaded":0,"status_type":-1,"current_status":-1}}
+
+
+Ace pro
+
+{"type":"multiColorBox","action":"refresh","timestamp":9576108,"msgid":"82dcc12d-bce6-4882-a22e-37c934dece8c","state":"success","code":200,"msg":"done","data":{"multi_color_box":[{"id":0,"slots":[{"index":2,"sku":"AHPLBK-101","type":"PLA","color":[255,255,0],"edit_status":0,"status":5,"color_group":[[255,255,0,255]],"icon_type":0}]}]}}
+{"type":"multiColorBox","action":"getInfo","timestamp":9011974,"msgid":"65c0620b-a0c8-4d08-8d0c-9cd038d439c9","state":"success","code":200,"msg":"done","data":{"multi_color_box":[{"id":0,"status":1,"model_id":0,"auto_feed":0,"loaded_slot":-1,"feed_status":{"code":200,"type":-1,"current_status":-1,"slot_index":-1},"temp":21,"drying_status":{"status":0,"target_temp":0,"duration":0,"remain_time":0},"slots":[{"index":0,"sku":"","type":"PLA","color":[33,39,33],"edit_status":1,"status":5,"color_group":[[33,39,33,255]],"icon_type":0},{"index":1,"sku":"AHPLBK-101","type":"PLA","color":[134,205,234],"edit_status":0,"status":5,"color_group":[[134,205,234,255]],"icon_type":0},{"index":2,"sku":"AHPLBK-101","type":"PLA","color":[255,255,0],"edit_status":0,"status":5,"color_group":[[255,255,0,255]],"icon_type":0},{"index":3,"sku":"AHPLBK-101","type":"PLA","color":[244,116,116],"edit_status":0,"status":5,"color_group":[[244,116,116,255]],"icon_type":0}]}]}}
+{"type":"multiColorBox","action":"autoUpdateInfo","timestamp":9533658,"msgid":"fb71724f-b678-4917-bef2-078084d79de8","state":"done","code":200,"msg":"done","data":{"taskid":"-1","id":0,"loaded_slot":2}}
+
+{"type":"multiColorBox","action":"getInfo","timestamp":1763416129571,"msgid":"9c085d01-b388-4424-85b2-7d6fe38257e5","state":"success","code":200,"msg":"done","data":{"multi_color_box":[]}}
+{"type":"multiColorBox","action":"getInfo","timestamp":1763396786068,"msgid":"05649945-4295-4c31-bced-5220222af22b","state":"success","code":200,"msg":"done","data":{"multi_color_box":[{"id":0,"status":1,"model_id":0,"auto_feed":0,"loaded_slot":-1,"feed_status":{"code":200,"type":-1,"current_status":-1,"slot_index":-1},"temp":25,"drying_status":{"status":0,"target_temp":0,"duration":0,"remain_time":0},"slots":[{"index":0,"sku":"","type":"PLA","color":[33,39,33],"edit_status":1,"status":5,"color_group":[[33,39,33,255]],"icon_type":0},{"index":1,"sku":"AHPLBK-101","type":"PLA","color":[134,205,234],"edit_status":0,"status":5,"color_group":[[134,205,234,255]],"icon_type":0},{"index":2,"sku":"AHPLBK-101","type":"PLA","color":[255,255,0],"edit_status":0,"status":5,"color_group":[[255,255,0,255]],"icon_type":0},{"index":3,"sku":"AHPLBK-101","type":"PLA","color":[244,116,116],"edit_status":0,"status":5,"color_group":[[244,116,116,255]],"icon_type":0}]}]}}
+{"type":"extfilbox","action":"reportInfo","timestamp":1763415064477,"msgid":"421bb1d7-4d0e-41f3-9346-fe5b695cc473","state":"success","code":200,"msg":"done","data":{"type":"PLA","color":[0,156,189],"loaded":0,"status_type":-1,"current_status":-1}}
+
+set dry
+{"type":"multiColorBox","action":"setDry","timestamp":1763484378734,"msgid":"1b1e68e0-c49e-11f0-8989-ab06b91eb80e","data":{"multi_color_box":[{"id":0,"drying_status":{"status":1,"target_temp":45,"duration":120}}]}}
+{"type":"multiColorBox","action":"setDry","timestamp":1763484453161,"msgid":"477b1190-c49e-11f0-8989-ab06b91eb80e","data":{"multi_color_box":[{"id":0,"drying_status":{"status":0}}]}}
+
+autofeed
+{"type":"multiColorBox","action":"setAutoFeed","timestamp":1763484449151,"msgid":"451730f0-c49e-11f0-8989-ab06b91eb80e","data":{"multi_color_box":[{"id":0,"auto_feed":1}]}}
+{"type":"multiColorBox","action":"setAutoFeed","timestamp":1763484451666,"msgid":"4696f320-c49e-11f0-8989-ab06b91eb80e","data":{"multi_color_box":[{"id":0,"auto_feed":0}]}}
+
+video
+{"type":"video","action":"startCapture","timestamp":242726,"msgid":"0753f662-80b1-4e67-943c-0edbae429ed7","state":"initSuccess","code":200,"msg":"","data":null}
+{"type":"video","action":"stopCapture","timestamp":241226,"msgid":"1fb9b9b2-9259-4bc0-aa01-4139d42f9dc4","state":"pushStopped","code":200,"msg":"","data":null}

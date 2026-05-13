@@ -1,0 +1,168 @@
+# ACE Pro Moonraker REST Sensors
+# Option 1: Include in configuration.yaml:
+#   rest: !include ace_pro_moonraker_sensors.yaml
+#
+# Option 2: Use as package (this file structure):
+#   Move to packages/ folder and include with:
+#   homeassistant:
+#     packages: !include_dir_named packages
+
+rest:
+  - resource: http://10.0.3.246:7125/printer/objects/query?filament_hub
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: "{}"
+    scan_interval: 30
+    sensor:
+    # Global ACE Pro sensors
+    - name: "ACE Pro Auto Refill"
+      value_template: "{{ value_json.result.status.filament_hub.auto_refill }}"
+      icon: mdi:reload
+      
+    - name: "ACE Pro Cutter State"
+      value_template: "{{ value_json.result.status.filament_hub.cutter_state }}"
+      icon: mdi:content-cut
+      
+    - name: "ACE Pro Current Filament"
+      value_template: "{{ value_json.result.status.filament_hub.current_filament }}"
+      icon: mdi:printer-3d-nozzle
+      
+    - name: "ACE Pro External Spool"
+      value_template: "{{ value_json.result.status.filament_hub.ext_spool }}"
+      icon: mdi:package-variant
+      
+    - name: "ACE Pro External Spool Status"
+      value_template: "{{ value_json.result.status.filament_hub.ext_spool_status }}"
+      icon: mdi:package-check
+      
+    - name: "ACE Pro Filament Present"
+      value_template: "{{ value_json.result.status.filament_hub.filament_present }}"
+      icon: mdi:checkbox-marked-circle
+      
+    - name: "ACE Pro Tracker Length"
+      value_template: "{{ value_json.result.status.filament_hub.tracker_detection_length | round(2) }}"
+      unit_of_measurement: "mm"
+      icon: mdi:ruler
+      
+    - name: "ACE Pro Tracker Present"
+      value_template: "{{ value_json.result.status.filament_hub.tracker_filament_present }}"
+      icon: mdi:checkbox-marked-circle-outline
+
+    # Box 0 sensors
+    - name: "ACE Pro Temperature"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].temp }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      state_class: measurement
+      
+    - name: "ACE Pro Status"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].status }}"
+      icon: mdi:state-machine
+      
+    - name: "ACE Pro Dryer Status"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].dryer_status.status }}"
+      icon: mdi:air-filter
+      
+    - name: "ACE Pro Dryer Target"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].dryer_status.target_temp }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      
+    - name: "ACE Pro Dryer Duration"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].dryer_status.duration }}"
+      unit_of_measurement: "min"
+      icon: mdi:timer
+      
+    - name: "ACE Pro Dryer Remain Time"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].dryer_status.remain_time }}"
+      unit_of_measurement: "min"
+      icon: mdi:timer-sand
+
+    # Slot 0 - All data in one sensor with attributes
+    - name: "ACE Pro Slot 0"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].slots[0].type }}"
+      icon: mdi:tray
+      json_attributes_path: "$.result.status.filament_hub.filament_hubs[0].slots[0]"
+      json_attributes:
+        - status
+        - type
+        - sku
+        - color
+        - rfid
+        - source
+        - colors
+        - icon_type
+
+    # Slot 1 - All data in one sensor with attributes
+    - name: "ACE Pro Slot 1"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].slots[1].type }}"
+      icon: mdi:tray
+      json_attributes_path: "$.result.status.filament_hub.filament_hubs[0].slots[1]"
+      json_attributes:
+        - status
+        - type
+        - sku
+        - color
+        - rfid
+        - source
+        - colors
+        - icon_type
+
+    # Slot 2 - All data in one sensor with attributes
+    - name: "ACE Pro Slot 2"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].slots[2].type }}"
+      icon: mdi:tray
+      json_attributes_path: "$.result.status.filament_hub.filament_hubs[0].slots[2]"
+      json_attributes:
+        - status
+        - type
+        - sku
+        - color
+        - rfid
+        - source
+        - colors
+        - icon_type
+
+    # Slot 3 - All data in one sensor with attributes
+    - name: "ACE Pro Slot 3"
+      value_template: "{{ value_json.result.status.filament_hub.filament_hubs[0].slots[3].type }}"
+      icon: mdi:tray
+      json_attributes_path: "$.result.status.filament_hub.filament_hubs[0].slots[3]"
+      json_attributes:
+        - status
+        - type
+        - sku
+        - color
+        - rfid
+        - source
+        - colors
+        - icon_type
+
+  # Filament Hub Info (static data)
+  - resource: http://10.0.3.246:7125/printer/filament_hub/info
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: "{}"
+    scan_interval: 3600  # 1x per uur
+    sensor:
+    - name: "ACE Pro ID"
+      value_template: "{{ value_json.result.infos[0].id }}"
+      icon: mdi:identifier
+      
+    - name: "ACE Pro Firmware"
+      value_template: "{{ value_json.result.infos[0].firmware }}"
+      icon: mdi:chip
+      
+    - name: "ACE Pro Model"
+      value_template: "{{ value_json.result.infos[0].model }}"
+      icon: mdi:package-variant
+      
+    - name: "ACE Pro Slots"
+      value_template: "{{ value_json.result.infos[0].slots }}"
+      icon: mdi:tray
+      
+    - name: "ACE Pro Structure Version"
+      value_template: "{{ value_json.result.infos[0].structure_version }}"
+      icon: mdi:file-tree
