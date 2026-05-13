@@ -92,6 +92,23 @@
       "api_error_server_maintenance": "Unexpected error parsing Anycubic response, server maintenance?",
       "api_error_user_server_maintenance": "Unexpected error retrieving user info, server maintenance?",
       "api_error_aws": "Unexpected error parsing AWS response: {0}"
+    },
+    "auth": {
+      "missing_auth": "Missing Anycubic authentication context.",
+      "missing_auth_token": "Missing Anycubic auth token.",
+      "set_auth_missing_token": "Cannot set authentication without a token.",
+      "user_id_md5_tuple_missing_id": "Unable to build user identifier hash, missing user ID.",
+      "access_token_login_failed": "Access-token login failed: {0}",
+      "login_required": "Authentication required. Please reauthenticate."
+    },
+    "auth_token_expired": {
+      "invalid_credentials": "Cloud credentials are invalid or expired."
+    },
+    "system": {
+      "cloud_requires_token": "Cloud setup requires a token.",
+      "cloud_auth_failed": "Cloud authentication failed.",
+      "no_cloud_printers": "No cloud printers were found for this account.",
+      "cloud_mqtt_timeout": "Cloud MQTT connection timed out."
     }
   }
 }

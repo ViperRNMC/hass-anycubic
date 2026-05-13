@@ -28,6 +28,13 @@ AUTH_MODE_LABELS: dict[AnycubicAuthMode, str] = {
 }
 
 
+def _auth_mode_to_option_key(mode: AnycubicAuthMode | None) -> str | None:
+    """Convert auth mode enum to the config-entry option key format."""
+    if mode is None:
+        return None
+    return f"option_{mode.name.lower()}"
+
+
 def _normalize_credential(value: Any) -> str:
     """Normalize user-supplied credential text from config flow inputs."""
     if value is None:
@@ -87,6 +94,8 @@ class CloudTransport(AnycubicTransport):
         self._camera_stream_blocked_reason: str | None = None
         self._forced_temperature_off: set[str] = set()
         self._forced_temperature_off_last_publish: dict[str, float] = {}
+        self._last_query_api_refresh_at: float = 0.0
+        self._query_api_refresh_interval_s: float = 4.0
 
     async def async_setup(self, on_data: Callable[[dict], None]) -> None:
         self._on_data = on_data
@@ -164,8 +173,9 @@ class CloudTransport(AnycubicTransport):
             raise ValueError(ErrorsSystem.cloud_auth_failed)
 
         updates: dict[str, Any] = {}
-        if selected_mode is not None and self._entry.data.get("cloud_auth_mode") != selected_mode.name.lower():
-            updates["cloud_auth_mode"] = selected_mode.name.lower()
+        selected_mode_option = _auth_mode_to_option_key(selected_mode)
+        if selected_mode_option is not None and self._entry.data.get("cloud_auth_mode") != selected_mode_option:
+            updates["cloud_auth_mode"] = selected_mode_option
         if token != self._entry.data.get("cloud_token"):
             updates["cloud_token"] = token
         if normalized_device_id != self._entry.data.get("cloud_device_id", ""):
@@ -303,6 +313,7 @@ class CloudTransport(AnycubicTransport):
                     "slots": primary_slots,
                     "loaded_slot": p.primary_multi_color_box_loaded_slot,
                     "firmware": p.primary_multi_color_box_fw_firmware_version,
+                    "available_firmware": p.primary_multi_color_box_fw_available_version,
                 }
             )
 
@@ -321,6 +332,7 @@ class CloudTransport(AnycubicTransport):
                     "slots": secondary_slots,
                     "loaded_slot": p.secondary_multi_color_box_loaded_slot,
                     "firmware": p.secondary_multi_color_box_fw_firmware_version,
+                    "available_firmware": p.secondary_multi_color_box_fw_available_version,
                 }
             )
 
@@ -555,6 +567,11 @@ class CloudTransport(AnycubicTransport):
             if action == "stopCapture":
                 self._publish_cloud_mqtt_command("video", "stopCapture")
                 return
+
+        if msg_type == "ota":
+            payload_data = data if isinstance(data, dict) else {}
+            self._publish_cloud_mqtt_command("ota", action, payload_data, publish_to_slicer=True)
+            return
 
         if msg_type == "print":
             if action == "pause":
@@ -847,6 +864,23 @@ class CloudTransport(AnycubicTransport):
                 except Exception as err:
                     _LOGGER.debug("Cloud MQTT query publish failed for %s: %s", query_topic, err)
 
+        should_refresh_from_api = True
+        if (
+            action == "query"
+            and self._api is not None
+            and self._api.mqtt_is_started
+            and topic in {"fan", "light", "tempature", "print", "info"}
+        ):
+            now = time.monotonic()
+            if now - self._last_query_api_refresh_at < self._query_api_refresh_interval_s:
+                should_refresh_from_api = False
+            else:
+                self._last_query_api_refresh_at = now
+
+        if not should_refresh_from_api:
+            self._emit_normalized_snapshot()
+            return
+
         try:
             await self._selected_printer.update_info_from_api(with_project=True)
         except Exception as err:
@@ -888,7 +922,7 @@ class CloudTransport(AnycubicTransport):
     async def async_teardown(self) -> None:
         if self._auth_check_task:
             self._auth_check_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._auth_check_task
             self._auth_check_task = None
         if self._api and self._api.mqtt_is_started:
@@ -917,6 +951,10 @@ class CloudTransport(AnycubicTransport):
             authenticated = await self._api.check_api_tokens()
         except Exception as err:
             _LOGGER.debug("Cloud auth health check failed during %s: %s", reason, err)
+            err_text = str(err).lower()
+            if "rate limited" in err_text or "too frequent" in err_text or "请求过于频繁" in str(err):
+                _LOGGER.warning("Cloud auth check rate-limited during %s; postponing reauth", reason)
+                return
             if is_periodic_refresh:
                 self._consecutive_periodic_auth_failures += 1
                 _LOGGER.warning(

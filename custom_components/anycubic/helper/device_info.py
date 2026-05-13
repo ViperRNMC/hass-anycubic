@@ -107,8 +107,10 @@ def build_ace_device_info(coordinator, box_id: int, firmware: str | None = None)
     entry_id = getattr(coordinator.config_entry, "entry_id", "unknown")
     device_info: dict[str, Any] = {
         "identifiers": {(DOMAIN, f"{entry_id}_ace_pro_box_{box_id}")},
+        "name": f"ACE Pro Box {box_id}",
         "via_device": (DOMAIN, entry_id),
-        **ACE_PRO_DEVICE_BASE,
+        "manufacturer": ACE_PRO_DEVICE_BASE["manufacturer"],
+        "model": ACE_PRO_DEVICE_BASE["model"],
     }
     if firmware:
         device_info["sw_version"] = str(firmware)

@@ -491,6 +491,11 @@ class AnycubicConfigFlow(ConfigFlow, domain=DOMAIN):
         self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reauth_confirm()
 
+    @staticmethod
+    def _reauth_auth_mode_default(entry_data: dict[str, Any]) -> str:
+        """Return the selector default key for cloud auth mode in reauth."""
+        return _auth_mode_to_option_key(entry_data.get("cloud_auth_mode", "option_slicer"))
+
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
